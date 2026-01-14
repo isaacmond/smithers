@@ -10,6 +10,9 @@ from pathlib import Path
 
 from smithers.console import console, create_progress, print_info
 from smithers.exceptions import DependencyMissingError, TmuxError
+from smithers.logging_config import get_logger, log_subprocess_result
+
+logger = get_logger("smithers.services.tmux")
 
 
 @dataclass
@@ -38,15 +41,19 @@ class TmuxService:
 
     def check_dependencies(self) -> list[str]:
         """Check for required dependencies and return list of missing ones."""
+        logger.debug("Checking tmux dependencies")
         missing: list[str] = []
 
         try:
-            subprocess.run(
+            result = subprocess.run(
                 ["tmux", "-V"],
                 capture_output=True,
                 check=True,
+                text=True,
             )
+            logger.debug(f"tmux version: {result.stdout.strip()}")
         except (subprocess.CalledProcessError, FileNotFoundError):
+            logger.warning("tmux not found or not working")
             missing.append("tmux")
 
         return missing
@@ -79,13 +86,24 @@ class TmuxService:
         explicitly disabled, or when running in a non-TTY environment (e.g.
         tests or redirected output).
         """
+        logger.debug(f"ensure_rejoinable_session called: session_name={session_name}")
+        logger.debug(f"  argv={argv}")
+        logger.debug(f"  SMITHERS_TMUX_WRAPPED={os.environ.get('SMITHERS_TMUX_WRAPPED')}")
+        logger.debug(f"  SMITHERS_DISABLE_TMUX_WRAPPER={os.environ.get('SMITHERS_DISABLE_TMUX_WRAPPER')}")
+        logger.debug(f"  TMUX={os.environ.get('TMUX')}")
+        logger.debug(f"  stdin.isatty={sys.stdin.isatty()}, stdout.isatty={sys.stdout.isatty()}")
+
         if os.environ.get("SMITHERS_TMUX_WRAPPED") == "1":
+            logger.info("Already inside tmux wrapper, continuing execution")
             return
         if os.environ.get("SMITHERS_DISABLE_TMUX_WRAPPER") == "1":
+            logger.info("Tmux wrapper disabled via SMITHERS_DISABLE_TMUX_WRAPPER")
             return
         if os.environ.get("TMUX"):
+            logger.info("Already inside tmux, skipping wrapper")
             return
         if not sys.stdin.isatty() or not sys.stdout.isatty():
+            logger.info("Non-TTY environment, skipping tmux wrapper")
             return
 
         self.ensure_dependencies()
@@ -101,6 +119,10 @@ class TmuxService:
             f"SMITHERS_TMUX_WRAPPED=1 {command}",
         ]
 
+        logger.info(f"Creating rejoinable tmux session: {session}")
+        logger.debug(f"  tmux command: {' '.join(tmux_cmd)}")
+        logger.debug(f"  inner command: {command}")
+
         print_info(
             f"Running smithers in tmux session '{session}' so you can reattach if disconnected."
         )
@@ -113,7 +135,9 @@ class TmuxService:
                 check=False,
                 text=True,
             )
+            logger.info(f"Tmux session '{session}' exited with code: {result.returncode}")
         except subprocess.SubprocessError as e:
+            logger.error(f"Failed to start tmux session '{session}': {e}")
             raise TmuxError(f"Failed to start tmux session '{session}': {e}") from e
 
         raise SystemExit(result.returncode)
@@ -138,25 +162,33 @@ class TmuxService:
             TmuxError: If session creation fails
         """
         session = self.sanitize_session_name(name)
+        logger.info(f"Creating tmux session: name={session}, workdir={workdir}")
+        logger.debug(f"  command: {command}")
         print_info(f"Starting tmux session '{session}' at {workdir}")
 
+        tmux_cmd = [
+            "tmux",
+            "new-session",
+            "-d",  # Detached
+            "-s",
+            session,
+            "-c",
+            str(workdir),
+            command,
+        ]
+
         try:
-            subprocess.run(
-                [
-                    "tmux",
-                    "new-session",
-                    "-d",  # Detached
-                    "-s",
-                    session,
-                    "-c",
-                    str(workdir),
-                    command,
-                ],
+            result = subprocess.run(
+                tmux_cmd,
                 capture_output=True,
                 check=True,
                 text=True,
             )
+            log_subprocess_result(logger, tmux_cmd, result.returncode, result.stdout, result.stderr)
+            logger.info(f"Tmux session '{session}' created successfully")
         except subprocess.CalledProcessError as e:
+            log_subprocess_result(logger, tmux_cmd, e.returncode, e.stdout, e.stderr, success=False)
+            logger.error(f"Failed to create tmux session '{session}': {e.stderr}")
             raise TmuxError(f"Failed to create tmux session '{session}': {e.stderr}") from e
 
         return session
@@ -176,7 +208,9 @@ class TmuxService:
             capture_output=True,
             check=False,
         )
-        return result.returncode == 0
+        exists = result.returncode == 0
+        logger.debug(f"session_exists({session}): {exists}")
+        return exists
 
     def wait_for_sessions(
         self,
@@ -190,9 +224,11 @@ class TmuxService:
             poll_interval: Seconds between status checks
         """
         remaining = list(sessions)
+        logger.info(f"Waiting for {len(sessions)} sessions: {sessions}")
 
         console.print(f"Waiting for {len(sessions)} session(s) to complete...")
 
+        iteration = 0
         with create_progress() as progress:
             task = progress.add_task(
                 f"[cyan]Waiting for {len(remaining)} sessions...",
@@ -200,16 +236,19 @@ class TmuxService:
             )
 
             while remaining:
+                iteration += 1
                 still_running: list[str] = []
                 for session in remaining:
                     if self.session_exists(session):
                         still_running.append(session)
                     else:
+                        logger.info(f"Session '{session}' completed")
                         console.print(f"  [green]Session '{session}' completed[/green]")
 
                 remaining = still_running
 
                 if remaining:
+                    logger.debug(f"Wait iteration {iteration}: {len(remaining)} sessions still running: {remaining}")
                     shown = ", ".join(remaining[:3])
                     suffix = "..." if len(remaining) > 3 else ""
                     progress.update(
@@ -218,6 +257,7 @@ class TmuxService:
                     )
                     time.sleep(poll_interval)
 
+        logger.info("All sessions completed")
         console.print("[green]All sessions completed[/green]")
 
     def kill_session(self, name: str) -> None:
@@ -227,14 +267,21 @@ class TmuxService:
             name: Session name (will be sanitized)
         """
         session = self.sanitize_session_name(name)
-        subprocess.run(
+        logger.debug(f"Killing tmux session: {session}")
+        result = subprocess.run(
             ["tmux", "kill-session", "-t", session],
             capture_output=True,
             check=False,
+            text=True,
         )
+        if result.returncode == 0:
+            logger.debug(f"Session '{session}' killed successfully")
+        else:
+            logger.debug(f"Session '{session}' kill returned {result.returncode} (may not exist)")
 
     def kill_all_smithers_sessions(self) -> None:
         """Kill all tmux sessions that appear to be smithers-related."""
+        logger.info("Killing all smithers-related tmux sessions")
         try:
             result = subprocess.run(
                 ["tmux", "list-sessions", "-F", "#{session_name}"],
@@ -243,6 +290,7 @@ class TmuxService:
                 text=True,
             )
             sessions = result.stdout.strip().split("\n")
+            logger.debug(f"Found {len(sessions)} tmux sessions")
 
             for session_name in sessions:
                 name = session_name.strip()
@@ -250,9 +298,10 @@ class TmuxService:
                     continue
                 # Kill sessions that look like branch names (start with letter, not just numbers)
                 if name[0].isalpha() and not name.isdigit():
+                    logger.debug(f"Killing session: {name}")
                     self.kill_session(name)
         except subprocess.CalledProcessError:
-            pass  # No sessions or tmux not running
+            logger.debug("No tmux sessions found or tmux not running")
 
     def _record_last_session_hint(self, session: str, command: str) -> None:
         """Persist the last session name so users can reattach after a crash."""

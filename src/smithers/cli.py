@@ -5,6 +5,7 @@ from rich.console import Console
 
 from smithers import __version__
 from smithers.commands.fix import fix
+from smithers.logging_config import cleanup_old_logs, get_logger, setup_logging
 from smithers.commands.implement import implement
 from smithers.commands.plan import plan
 from smithers.commands.quote import quote
@@ -50,6 +51,12 @@ def main(
     the details of creating staged PRs from design documents and iteratively
     fixes review comments until everything passes. Excellent.
     """
+    # Initialize logging early
+    setup_logging()
+    cleanup_old_logs(max_age_days=30)
+
+    logger = get_logger("smithers.cli")
+
     if version:
         console = Console()
         console.print(f"smithers version {__version__}")
@@ -58,6 +65,10 @@ def main(
 
     # Check for updates on every invocation
     check_for_updates()
+
+    # Log the command being invoked
+    if ctx.invoked_subcommand:
+        logger.info(f"Command invoked: {ctx.invoked_subcommand}")
 
     # Show help if no command provided
     if ctx.invoked_subcommand is None:

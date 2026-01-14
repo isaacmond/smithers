@@ -75,7 +75,7 @@ fi
 # Install smithers
 echo -e "\n${BLUE}Installing smithers...${NC}\n"
 
-REPO_URL="git+https://github.com/Metaview/smithers.git"
+REPO_URL="git+https://github.com/isaacmond/smithers.git"
 
 if uv tool install "$REPO_URL" --force; then
     echo -e "\n${GREEN}╔═══════════════════════════════════════════════════════════╗${NC}"

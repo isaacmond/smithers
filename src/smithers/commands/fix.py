@@ -13,6 +13,9 @@ import typer
 from smithers.commands.quote import print_random_quote
 from smithers.console import console, print_error, print_header, print_info, print_success
 from smithers.exceptions import DependencyMissingError, SmithersError
+from smithers.logging_config import get_logger
+
+logger = get_logger("smithers.commands.fix")
 from smithers.models.config import Config, set_config
 from smithers.prompts.fix import render_fix_planning_prompt, render_fix_prompt
 from smithers.services.claude import ClaudeService

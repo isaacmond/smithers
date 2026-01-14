@@ -26,7 +26,7 @@ Like Mr. Burns' ever-faithful assistant, Smithers diligently handles the details
 ## Installation
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Metaview/smithers/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/isaacmond/smithers/main/install.sh | bash
 ```
 
 That's it! The installer will guide you through setting up any missing dependencies.
@@ -38,7 +38,7 @@ If you prefer to install manually:
 
 ```bash
 # Requires uv (https://docs.astral.sh/uv/)
-uv tool install git+https://github.com/Metaview/smithers.git
+uv tool install git+https://github.com/isaacmond/smithers.git
 ```
 
 **Prerequisites:**

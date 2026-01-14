@@ -9,6 +9,9 @@ from typing import Any
 
 from smithers.console import print_info
 from smithers.exceptions import ClaudeError, DependencyMissingError
+from smithers.logging_config import get_logger, log_subprocess_result
+
+logger = get_logger("smithers.services.claude")
 
 
 @dataclass
@@ -88,15 +91,19 @@ class ClaudeService:
 
     def check_dependencies(self) -> list[str]:
         """Check for required dependencies and return list of missing ones."""
+        logger.debug("Checking claude CLI dependencies")
         missing: list[str] = []
 
         try:
-            subprocess.run(
+            result = subprocess.run(
                 ["claude", "--version"],
                 capture_output=True,
                 check=True,
+                text=True,
             )
+            logger.debug(f"claude CLI version: {result.stdout.strip()}")
         except (subprocess.CalledProcessError, FileNotFoundError):
+            logger.warning("claude CLI not found or not working")
             missing.append("claude")
 
         return missing
@@ -129,6 +136,11 @@ class ClaudeService:
         if self.dangerously_skip_permissions:
             cmd.append("--dangerously-skip-permissions")
 
+        logger.info(f"Running Claude prompt: model={self.model}, workdir={workdir}")
+        logger.debug(f"Claude command: {' '.join(cmd)}")
+        logger.debug(f"Prompt (first 500 chars): {prompt[:500]}...")
+        logger.debug(f"Prompt length: {len(prompt)} chars")
+
         print_info(f"Running Claude with model: {self.model}")
 
         try:
@@ -141,12 +153,19 @@ class ClaudeService:
                 check=False,
             )
 
+            success = result.returncode == 0
+            logger.info(f"Claude completed: exit_code={result.returncode}, success={success}")
+            log_subprocess_result(
+                logger, cmd, result.returncode, result.stdout, result.stderr, success=success
+            )
+
             return ClaudeResult(
                 output=result.stdout + result.stderr,
                 exit_code=result.returncode,
-                success=result.returncode == 0,
+                success=success,
             )
         except subprocess.SubprocessError as e:
+            logger.error(f"Failed to run Claude CLI: {e}")
             raise ClaudeError(f"Failed to run Claude CLI: {e}") from e
 
     def create_tmux_command(
@@ -187,4 +206,10 @@ class ClaudeService:
             ]
         )
 
-        return " ".join(cmd_parts)
+        command = " ".join(cmd_parts)
+        logger.debug(f"Created tmux command for Claude: {command}")
+        logger.debug(f"  prompt_file: {prompt_file}")
+        logger.debug(f"  output_file: {output_file}")
+        logger.debug(f"  exit_file: {exit_file}")
+
+        return command

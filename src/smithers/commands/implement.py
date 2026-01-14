@@ -11,6 +11,9 @@ import typer
 from smithers.commands.quote import print_random_quote
 from smithers.console import console, print_error, print_header, print_info, print_success
 from smithers.exceptions import DependencyMissingError, SmithersError
+from smithers.logging_config import get_logger
+
+logger = get_logger("smithers.commands.implement")
 from smithers.models.config import Config, set_config
 from smithers.models.todo import TodoFile
 from smithers.prompts.implementation import render_implementation_prompt
@@ -50,7 +53,9 @@ def run_planning_session(
     config: Config,
 ) -> PlanResult:
     """Generate a TODO plan via Claude Code."""
+    logger.info(f"Starting planning session: design_doc={design_doc}, todo_file={todo_file}")
     design_content = design_doc.read_text()
+    logger.debug(f"Design doc size: {len(design_content)} chars")
 
     planning_prompt = render_planning_prompt(
         design_doc_path=design_doc,
@@ -66,17 +71,21 @@ def run_planning_session(
         console.print(result.output)
 
     if not result.success:
+        logger.error(f"Claude Code failed during planning: exit_code={result.exit_code}")
         raise SmithersError(f"Claude Code failed during planning: {result.output}")
 
     if not todo_file.exists():
+        logger.error(f"TODO file was not created at {todo_file}")
         raise SmithersError(f"TODO file was not created at {todo_file}")
 
     json_output = result.extract_json()
     num_stages = json_output.get("num_stages") if json_output else result.extract_int("NUM_STAGES")
 
     if num_stages is None or num_stages < 1:
+        logger.error("Could not determine number of stages from Claude output")
         raise SmithersError("Could not determine number of stages from Claude output")
 
+    logger.info(f"Planning complete: {num_stages} stages")
     print_success(f"Planning complete. TODO file created with {num_stages} stages.")
     return PlanResult(todo_file=todo_file, num_stages=num_stages, design_content=design_content)
 
@@ -135,6 +144,17 @@ def implement(
     """
     print_random_quote()
 
+    logger.info("=" * 60)
+    logger.info("Starting implement command")
+    logger.info(f"  design_doc: {design_doc}")
+    logger.info(f"  base_branch: {base_branch}")
+    logger.info(f"  model: {model}")
+    logger.info(f"  todo_file: {todo_file}")
+    logger.info(f"  branch_prefix: {branch_prefix}")
+    logger.info(f"  dry_run: {dry_run}")
+    logger.info(f"  verbose: {verbose}")
+    logger.info("=" * 60)
+
     # Set up configuration
     config = Config(
         model=model,
@@ -151,6 +171,7 @@ def implement(
     claude_service = ClaudeService(model=model)
 
     # Check dependencies
+    logger.info("Checking dependencies")
     try:
         tmux_service.ensure_rejoinable_session(
             session_name=f"smithers-impl-{design_doc.stem}",
@@ -159,7 +180,9 @@ def implement(
         git_service.ensure_dependencies()
         tmux_service.ensure_dependencies()
         claude_service.ensure_dependencies()
+        logger.info("All dependencies satisfied")
     except DependencyMissingError as e:
+        logger.error(f"Missing dependencies: {e}")
         print_error(str(e))
         console.print("\nInstall with:")
         console.print("  git clone https://github.com/coderabbitai/git-worktree-runner.git")
@@ -191,8 +214,10 @@ def implement(
 
     try:
         if user_supplied_todo:
+            logger.info("Using existing TODO file, skipping planning phase")
             console.print("\n[yellow]Using existing TODO file; skipping planning phase.[/yellow]")
             design_content = design_doc.read_text()
+            logger.info("Phase 2: Implementation")
             print_header("PHASE 2: IMPLEMENTATION")
             collected_prs = _run_implementation_phase(
                 design_doc=design_doc,
@@ -205,6 +230,7 @@ def implement(
                 config=config,
             )
         else:
+            logger.info("Phase 1: Planning")
             print_header("PHASE 1: PLANNING")
             plan_result = run_planning_session(
                 design_doc=design_doc,
@@ -214,6 +240,7 @@ def implement(
             )
             design_content = plan_result.design_content
 
+            logger.info("Phase 2: Implementation")
             print_header("PHASE 2: IMPLEMENTATION")
             collected_prs = _run_implementation_phase(
                 design_doc=design_doc,
@@ -226,10 +253,12 @@ def implement(
                 config=config,
             )
     except SmithersError as e:
+        logger.error(f"SmithersError: {e}", exc_info=True)
         print_error(str(e))
         raise typer.Exit(1) from e
     finally:
         # Cleanup worktrees on exit
+        logger.info("Cleanup: removing worktrees and killing sessions")
         git_service.cleanup_all_worktrees()
         tmux_service.kill_all_smithers_sessions()
 
@@ -270,30 +299,38 @@ def _run_implementation_phase(
     Returns:
         List of PR numbers created
     """
+    logger.info(f"Starting implementation phase: todo_file={todo_file}, base_branch={base_branch}")
     todo = TodoFile.parse(todo_file)
     parallel_groups = todo.get_parallel_groups_in_order()
 
     if not parallel_groups:
+        logger.info("No parallel groups found, using sequential execution")
         console.print("[yellow]No parallel groups found. Using sequential execution.[/yellow]")
         parallel_groups = ["sequential"]
 
+    logger.info(f"Parallel groups: {parallel_groups}")
     console.print(f"Parallel groups to process: [cyan]{', '.join(parallel_groups)}[/cyan]")
 
     collected_prs: list[int] = []
 
     for group in parallel_groups:
+        logger.info(f"Processing parallel group: {group}")
         print_header(f"PROCESSING PARALLEL GROUP: {group}")
 
         stages_in_group = todo.get_stages_by_group().get(group, [])
         if not stages_in_group:
+            logger.warning(f"No stages found for group {group}")
             console.print(f"[yellow]No stages found for group {group}[/yellow]")
             continue
+
+        logger.info(f"Group {group} has {len(stages_in_group)} stages")
 
         # Prepare worktrees and prompts for all stages
         group_data: list[StageData] = []
         todo_content = todo_file.read_text()
 
         for stage in stages_in_group:
+            logger.info(f"Preparing Stage {stage.number}: branch={stage.branch}")
             console.print(f"Preparing Stage {stage.number} (branch: {stage.branch})")
 
             # Determine base for worktree (depends_on is now the actual branch name)
@@ -357,6 +394,7 @@ def _run_implementation_phase(
         tmux_service.wait_for_sessions(sessions, poll_interval=config.poll_interval)
 
         # Collect results
+        logger.info("Collecting results from all stages")
         console.print("\nCollecting results...")
         for data in group_data:
             stage = data["stage"]
@@ -366,6 +404,7 @@ def _run_implementation_phase(
 
             if output_file.exists():
                 output = output_file.read_text()
+                logger.debug(f"Stage {stage.number} output ({len(output)} chars)")
 
                 if config.verbose:
                     print_header(f"OUTPUT FROM STAGE {stage.number}")
@@ -380,6 +419,7 @@ def _run_implementation_phase(
                 pr_num: int | None = None
                 if json_output:
                     pr_num = json_output.get("pr_number")
+                    logger.debug(f"Stage {stage.number} JSON output: {json_output}")
                 else:
                     # Fallback to legacy regex format
                     import re
@@ -390,11 +430,14 @@ def _run_implementation_phase(
 
                 if pr_num:
                     collected_prs.append(pr_num)
+                    logger.info(f"Stage {stage.number} complete: PR #{pr_num}")
                     print_success(f"Stage {stage.number} complete. PR #{pr_num}")
                 else:
                     msg = f"Could not extract PR number for Stage {stage.number}"
+                    logger.warning(msg)
                     console.print(f"[yellow]Warning: {msg}[/yellow]")
             else:
+                logger.warning(f"No output file found for Stage {stage.number}: {output_file}")
                 console.print(
                     f"[yellow]Warning: No output file found for Stage {stage.number}[/yellow]"
                 )

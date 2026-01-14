@@ -5,6 +5,9 @@ import subprocess
 from dataclasses import dataclass
 
 from smithers.exceptions import DependencyMissingError, GitHubError
+from smithers.logging_config import get_logger, log_subprocess_result
+
+logger = get_logger("smithers.services.github")
 
 
 @dataclass
@@ -52,31 +55,43 @@ class GitHubService:
         Raises:
             GitHubError: If unable to determine repo info
         """
+        logger.debug("Getting repo info from gh CLI")
+        cmd = ["gh", "repo", "view", "--json", "owner,name"]
         try:
             result = subprocess.run(
-                ["gh", "repo", "view", "--json", "owner,name"],
+                cmd,
                 capture_output=True,
                 check=True,
                 text=True,
             )
+            log_subprocess_result(logger, cmd, result.returncode, result.stdout, result.stderr)
             data = json.loads(result.stdout)
-            return data["owner"]["login"], data["name"]
+            owner, name = data["owner"]["login"], data["name"]
+            logger.debug(f"Repo info: owner={owner}, name={name}")
+            return owner, name
         except subprocess.CalledProcessError as e:
+            log_subprocess_result(logger, cmd, e.returncode, e.stdout, e.stderr, success=False)
+            logger.error(f"Failed to get repo info: {e.stderr}")
             raise GitHubError(f"Failed to get repo info: {e.stderr}") from e
         except (json.JSONDecodeError, KeyError) as e:
+            logger.error(f"Failed to parse repo info: {e}")
             raise GitHubError(f"Failed to parse repo info: {e}") from e
 
     def check_dependencies(self) -> list[str]:
         """Check for required dependencies and return list of missing ones."""
+        logger.debug("Checking gh CLI dependencies")
         missing: list[str] = []
 
         try:
-            subprocess.run(
+            result = subprocess.run(
                 ["gh", "--version"],
                 capture_output=True,
                 check=True,
+                text=True,
             )
+            logger.debug(f"gh version: {result.stdout.strip().split(chr(10))[0]}")
         except (subprocess.CalledProcessError, FileNotFoundError):
+            logger.warning("gh CLI not found or not working")
             missing.append("gh (GitHub CLI)")
 
         return missing
@@ -99,31 +114,39 @@ class GitHubService:
         Raises:
             GitHubError: If the operation fails
         """
+        logger.info(f"Getting PR info: pr_number={pr_number}")
+        cmd = [
+            "gh",
+            "pr",
+            "view",
+            str(pr_number),
+            "--json",
+            "number,title,headRefName,state,url",
+        ]
         try:
             result = subprocess.run(
-                [
-                    "gh",
-                    "pr",
-                    "view",
-                    str(pr_number),
-                    "--json",
-                    "number,title,headRefName,state,url",
-                ],
+                cmd,
                 capture_output=True,
                 check=True,
                 text=True,
             )
+            log_subprocess_result(logger, cmd, result.returncode, result.stdout, result.stderr)
             data = json.loads(result.stdout)
-            return PRInfo(
+            pr_info = PRInfo(
                 number=data["number"],
                 title=data["title"],
                 branch=data["headRefName"],
                 state=data["state"],
                 url=data["url"],
             )
+            logger.info(f"PR #{pr_number}: branch={pr_info.branch}, state={pr_info.state}")
+            return pr_info
         except subprocess.CalledProcessError as e:
+            log_subprocess_result(logger, cmd, e.returncode, e.stdout, e.stderr, success=False)
+            logger.error(f"Failed to get PR #{pr_number} info: {e.stderr}")
             raise GitHubError(f"Failed to get PR #{pr_number} info: {e.stderr}") from e
         except (json.JSONDecodeError, KeyError) as e:
+            logger.error(f"Failed to parse PR #{pr_number} info: {e}")
             raise GitHubError(f"Failed to parse PR #{pr_number} info: {e}") from e
 
     def get_pr_branch(self, pr_number: int) -> str:
@@ -146,15 +169,18 @@ class GitHubService:
         Returns:
             List of check statuses
         """
+        logger.debug(f"Getting PR checks: pr_number={pr_number}")
+        cmd = ["gh", "pr", "checks", str(pr_number), "--json", "name,state,conclusion"]
         try:
             result = subprocess.run(
-                ["gh", "pr", "checks", str(pr_number), "--json", "name,state,conclusion"],
+                cmd,
                 capture_output=True,
                 check=True,
                 text=True,
             )
+            log_subprocess_result(logger, cmd, result.returncode, result.stdout, result.stderr)
             data = json.loads(result.stdout)
-            return [
+            checks = [
                 CheckStatus(
                     name=check.get("name", ""),
                     status=check.get("state", "pending"),
@@ -162,9 +188,13 @@ class GitHubService:
                 )
                 for check in data
             ]
-        except subprocess.CalledProcessError:
+            logger.debug(f"PR #{pr_number} has {len(checks)} checks")
+            return checks
+        except subprocess.CalledProcessError as e:
+            logger.warning(f"Failed to get PR checks for #{pr_number}: {e.stderr}")
             return []
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
+            logger.warning(f"Failed to parse PR checks for #{pr_number}: {e}")
             return []
 
     def all_checks_passing(self, pr_number: int) -> bool:
@@ -178,9 +208,12 @@ class GitHubService:
         """
         checks = self.get_pr_checks(pr_number)
         if not checks:
+            logger.debug(f"PR #{pr_number}: No checks configured")
             return True  # No checks configured
 
-        return all(check.status == "pass" or check.conclusion == "success" for check in checks)
+        all_pass = all(check.status == "pass" or check.conclusion == "success" for check in checks)
+        logger.info(f"PR #{pr_number}: all_checks_passing={all_pass}")
+        return all_pass
 
     def get_unresolved_comments(self, pr_number: int) -> list[ReviewComment]:
         """Get unresolved review comments on a PR.
@@ -193,6 +226,7 @@ class GitHubService:
         Returns:
             List of unresolved review comments
         """
+        logger.info(f"Getting unresolved comments: pr_number={pr_number}")
         # Get owner/repo dynamically from current repository
         owner, repo = self._get_repo_info()
 
@@ -219,25 +253,28 @@ class GitHubService:
         }
         """
 
+        cmd = [
+            "gh",
+            "api",
+            "graphql",
+            "-f",
+            f"query={query}",
+            "-F",
+            f"owner={owner}",
+            "-F",
+            f"repo={repo}",
+            "-F",
+            f"number={pr_number}",
+        ]
+
         try:
             result = subprocess.run(
-                [
-                    "gh",
-                    "api",
-                    "graphql",
-                    "-f",
-                    f"query={query}",
-                    "-F",
-                    f"owner={owner}",
-                    "-F",
-                    f"repo={repo}",
-                    "-F",
-                    f"number={pr_number}",
-                ],
+                cmd,
                 capture_output=True,
                 check=True,
                 text=True,
             )
+            logger.debug(f"GraphQL query completed for PR #{pr_number}")
             data = json.loads(result.stdout)
 
             comments: list[ReviewComment] = []
@@ -264,8 +301,14 @@ class GitHubService:
                     )
 
             # Filter to only unresolved
-            return [c for c in comments if not c.is_resolved]
-        except (subprocess.CalledProcessError, json.JSONDecodeError):
+            unresolved = [c for c in comments if not c.is_resolved]
+            logger.info(f"PR #{pr_number}: {len(unresolved)} unresolved comments (total {len(comments)})")
+            return unresolved
+        except subprocess.CalledProcessError as e:
+            logger.warning(f"Failed to get comments for PR #{pr_number}: {e.stderr}")
+            return []
+        except json.JSONDecodeError as e:
+            logger.warning(f"Failed to parse comments for PR #{pr_number}: {e}")
             return []
 
     def create_pr(
@@ -289,6 +332,7 @@ class GitHubService:
         Raises:
             GitHubError: If PR creation fails
         """
+        logger.info(f"Creating PR: title='{title}', base={base}, draft={draft}")
         cmd = [
             "gh",
             "pr",
@@ -304,6 +348,8 @@ class GitHubService:
         if draft:
             cmd.append("--draft")
 
+        logger.debug(f"PR body: {body[:200]}..." if len(body) > 200 else f"PR body: {body}")
+
         try:
             result = subprocess.run(
                 cmd,
@@ -311,12 +357,17 @@ class GitHubService:
                 check=True,
                 text=True,
             )
+            log_subprocess_result(logger, cmd[:6], result.returncode, result.stdout, result.stderr)
             # gh pr create outputs the PR URL, extract number from it
             url = result.stdout.strip()
             # URL format: https://github.com/org/repo/pull/123
             pr_number = int(url.split("/")[-1])
+            logger.info(f"PR created: #{pr_number} ({url})")
             return pr_number
         except subprocess.CalledProcessError as e:
+            log_subprocess_result(logger, cmd[:6], e.returncode, e.stdout, e.stderr, success=False)
+            logger.error(f"Failed to create PR: {e.stderr}")
             raise GitHubError(f"Failed to create PR: {e.stderr}") from e
         except (ValueError, IndexError) as e:
+            logger.error(f"Failed to parse PR number from output: {e}")
             raise GitHubError(f"Failed to parse PR number from output: {e}") from e
