@@ -55,6 +55,7 @@ class TmuxService:
         logger.debug("Checking tmux dependencies")
         missing: list[str] = []
 
+        # Check tmux
         try:
             result = subprocess.run(
                 ["tmux", "-V"],
@@ -66,6 +67,20 @@ class TmuxService:
         except (subprocess.CalledProcessError, FileNotFoundError):
             logger.warning("tmux not found or not working")
             missing.append("tmux")
+
+        # Check script (used for capturing terminal output)
+        # script is part of util-linux on Linux and bsdmainutils on macOS
+        try:
+            result = subprocess.run(
+                ["which", "script"],
+                capture_output=True,
+                check=True,
+                text=True,
+            )
+            logger.debug(f"script found at: {result.stdout.strip()}")
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            logger.warning("script command not found")
+            missing.append("script")
 
         return missing
 
@@ -124,6 +139,14 @@ class TmuxService:
         self.ensure_dependencies()
 
         session = self.sanitize_session_name(session_name)
+
+        # Handle existing session - kill it for a fresh start
+        # Users who want to resume should use 'smithers rejoin'
+        if self.session_exists(session):
+            logger.info(f"Session '{session}' already exists, killing for fresh start")
+            print_info(f"Killing existing session '{session}' (use 'smithers rejoin' to resume)")
+            self.kill_session(session)
+
         session_dir = self._get_session_dir(session)
         output_log = session_dir / "output.log"
         exit_code_file = session_dir / "exit_code"
@@ -136,17 +159,10 @@ class TmuxService:
             f"SMITHERS_TMUX_WRAPPED=1 {inner_command}; echo $? > {shlex.quote(str(exit_code_file))}"
         )
         # macOS (BSD) and Linux (GNU) have different script command syntax:
-        # - Linux: script -q FILE -c "COMMAND"
-        # - macOS: script -q FILE COMMAND... (no -c flag, command is positional)
-        if platform.system() == "Darwin":
-            script_command = (
-                f"script -q {shlex.quote(str(output_log))} "
-                f"/bin/sh -c {shlex.quote(wrapped_command)}"
-            )
-        else:
-            script_command = (
-                f"script -q {shlex.quote(str(output_log))} -c {shlex.quote(wrapped_command)}"
-            )
+        # - Linux (util-linux): script -q -f FILE -c "COMMAND" (-f flushes after each write)
+        # - macOS (BSD): script -q -F FILE COMMAND... (-F flushes after each write)
+        # Both Intel and ARM Macs use the same BSD script command.
+        script_command = self._build_script_command(output_log, wrapped_command)
 
         logger.info(f"Creating rejoinable tmux session: {session}")
         logger.debug(f"  session_dir: {session_dir}")
@@ -181,6 +197,36 @@ class TmuxService:
         session_dir.mkdir(parents=True, exist_ok=True)
         return session_dir
 
+    def _build_script_command(self, output_log: Path, wrapped_command: str) -> str:
+        """Build the platform-specific script command for capturing terminal output.
+
+        Handles differences between:
+        - macOS (BSD script): Works on both Intel and ARM Macs
+        - Linux (util-linux script): Works on most Linux distributions
+
+        Args:
+            output_log: Path to the output log file
+            wrapped_command: The command to run inside script
+
+        Returns:
+            The complete script command string
+        """
+        log_path = shlex.quote(str(output_log))
+        cmd = shlex.quote(wrapped_command)
+
+        if platform.system() == "Darwin":
+            # macOS (BSD) script: script [-q] [-F] file command [arguments ...]
+            # -q: quiet mode (don't print start/end messages)
+            # -F: flush output after each write (macOS 10.15+, fall back without if needed)
+            # Works identically on Intel (x86_64) and ARM (arm64) Macs
+            return f"script -q -F {log_path} /bin/sh -c {cmd}"
+
+        # Linux (util-linux) script: script [options] [file [command [arguments]]]
+        # -q: quiet mode
+        # -f: flush output after each write (util-linux 2.25+, 2014)
+        # -c: run command (required on Linux, command is passed as argument to -c)
+        return f"script -q -f {log_path} -c {cmd}"
+
     def _create_detached_session(self, session: str, command: str) -> None:
         """Create a detached tmux session running the given command.
 
@@ -191,6 +237,11 @@ class TmuxService:
         Raises:
             TmuxError: If session creation fails
         """
+        # Defensive check: ensure no duplicate session exists
+        if self.session_exists(session):
+            logger.warning(f"Session '{session}' exists in _create_detached_session, killing")
+            self.kill_session(session)
+
         tmux_cmd = [
             "tmux",
             "new-session",
@@ -221,20 +272,25 @@ class TmuxService:
         session: str,
         log_file: Path,
         exit_code_file: Path,
-        poll_interval: float = 0.1,
+        session_check_interval: float = 2.0,
     ) -> int:
         """Stream output from log file until session completes or user detaches.
+
+        Uses `tail -f` for efficient real-time streaming with minimal latency.
 
         Args:
             session: The tmux session name
             log_file: Path to the output log file
             exit_code_file: Path to the exit code file
-            poll_interval: Seconds between reads
+            session_check_interval: Seconds between session existence checks
 
         Returns:
             The exit code from the session (0 if detached by user)
         """
+        import selectors
+
         detached = False
+        tail_proc: subprocess.Popen[bytes] | None = None
 
         def handle_sigint(_signum: int, _frame: object) -> None:
             nonlocal detached
@@ -250,36 +306,60 @@ class TmuxService:
                 if not self.session_exists(session):
                     logger.error(f"Session '{session}' exited before output was available")
                     return 1
-                time.sleep(0.1)
+                time.sleep(0.05)
 
             if not log_file.exists():
                 logger.warning(f"Log file not created after 5s: {log_file}")
                 # Fall back to waiting for session
                 while self.session_exists(session) and not detached:
-                    time.sleep(poll_interval)
+                    time.sleep(session_check_interval)
                 if detached:
                     print_detach_message(session)
                     return 0
                 return self._read_exit_code(exit_code_file)
 
-            # Stream the log file
-            with log_file.open("rb") as f:
-                while not detached:
-                    data = f.read(4096)
+            # Use tail -f for efficient streaming
+            # -n +1 starts from line 1 (beginning of file)
+            tail_proc = subprocess.Popen(
+                ["tail", "-f", "-n", "+1", str(log_file)],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+            )
+
+            # Use selectors for non-blocking reads with timeout
+            sel = selectors.DefaultSelector()
+            sel.register(tail_proc.stdout, selectors.EVENT_READ)  # type: ignore[arg-type]
+
+            last_session_check = time.time()
+
+            while not detached:
+                # Wait for data with a short timeout
+                events = sel.select(timeout=0.05)
+
+                for key, _ in events:
+                    data = key.fileobj.read(8192)  # type: ignore[union-attr]
                     if data:
-                        # Write raw bytes to stdout to preserve ANSI codes
                         sys.stdout.buffer.write(data)
                         sys.stdout.buffer.flush()
-                    else:
-                        # No new data - check if session is still running
-                        if not self.session_exists(session):
-                            # Session ended - read any remaining output
-                            remaining = f.read()
-                            if remaining:
-                                sys.stdout.buffer.write(remaining)
-                                sys.stdout.buffer.flush()
-                            break
-                        time.sleep(poll_interval)
+
+                # Periodically check if session is still running (expensive operation)
+                now = time.time()
+                if now - last_session_check >= session_check_interval:
+                    last_session_check = now
+                    if not self.session_exists(session):
+                        # Session ended - drain any remaining output
+                        sel.unregister(tail_proc.stdout)  # type: ignore[arg-type]
+                        tail_proc.stdout.close()  # type: ignore[union-attr]
+                        tail_proc.terminate()
+                        tail_proc.wait()
+                        tail_proc = None
+
+                        # Read any final content directly from the file
+                        # (tail may not have caught the very last writes)
+                        time.sleep(0.1)  # Brief pause for final file writes
+                        break
+
+            sel.close()
 
             if detached:
                 print_detach_message(session)
@@ -294,6 +374,15 @@ class TmuxService:
             # Restore original signal handler
             signal.signal(signal.SIGINT, original_handler)
 
+            # Clean up tail process if still running
+            if tail_proc is not None:
+                tail_proc.terminate()
+                try:
+                    tail_proc.wait(timeout=1.0)
+                except subprocess.TimeoutExpired:
+                    tail_proc.kill()
+                    tail_proc.wait()
+
     def _read_exit_code(self, exit_code_file: Path) -> int:
         """Read the exit code from the marker file.
 
@@ -303,8 +392,8 @@ class TmuxService:
         Returns:
             The exit code, or 1 if not found
         """
-        # Give a moment for the file to be written
-        for _ in range(10):
+        # Give time for the file to be written (up to 3 seconds)
+        for _ in range(30):
             if exit_code_file.exists():
                 try:
                     content = exit_code_file.read_text().strip()
@@ -340,6 +429,12 @@ class TmuxService:
         session = self.sanitize_session_name(name)
         logger.info(f"Creating tmux session: name={session}, workdir={workdir}")
         logger.debug(f"  command: {command}")
+
+        # Kill any existing session with this name (from interrupted runs)
+        if self.session_exists(session):
+            logger.info(f"Session '{session}' already exists from previous run, killing it")
+            self.kill_session(session)
+
         print_info(f"Starting tmux session '{session}' at {workdir}")
 
         tmux_cmd = [

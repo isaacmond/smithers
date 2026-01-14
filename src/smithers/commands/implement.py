@@ -483,7 +483,7 @@ def _run_implementation_phase(
                     print_header(f"OUTPUT FROM STAGE {stage.number}")
                     console.print(output)
 
-                # Extract PR number from JSON (with fallback to legacy regex)
+                # Extract PR number from JSON
                 from smithers.services.claude import ClaudeResult
 
                 stage_result = ClaudeResult(output=output, exit_code=0, success=True)
@@ -493,13 +493,6 @@ def _run_implementation_phase(
                 if json_output:
                     pr_num = json_output.get("pr_number")
                     logger.debug(f"Stage {stage.number} JSON output: {json_output}")
-                else:
-                    # Fallback to legacy regex format
-                    import re
-
-                    pr_match = re.search(rf"STAGE_{stage.number}_PR:\s*(\d+)", output)
-                    if pr_match:
-                        pr_num = int(pr_match.group(1))
 
                 if pr_num:
                     collected_prs.append(pr_num)

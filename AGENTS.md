@@ -3,6 +3,24 @@
 ## Code Style
 
 - **NEVER** use `from __future__ import annotations` or any other `__future__` imports
+- **ALWAYS** put all imports at module level (top of file) — no inline or local imports inside functions
+
+## Shipping Code
+
+**ALWAYS** ship code directly to `main` after completing a feature or fix. Once all checks pass, bump the version and push immediately:
+
+1. **Run all checks**:
+   ```bash
+   uv run ty check src/
+   uv run ruff check src/
+   uv run pytest tests/
+   ```
+
+2. **Update README.md** with the latest functionality and features.
+
+3. **If all checks pass**, bump the version and release (see "Releasing a New Version" below)
+
+4. **Push directly to `main`** — no PRs required when checks pass
 
 ## Before Merging to `main`
 

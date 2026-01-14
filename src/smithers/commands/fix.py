@@ -1,6 +1,5 @@
 """Fix command - iteratively fix PR review comments and CI failures."""
 
-import re
 import sys
 import time
 from datetime import UTC, datetime
@@ -385,14 +384,13 @@ def _run_fix_iteration(
                 print_header(f"OUTPUT FROM PR #{pr_num}")
                 console.print(output)
 
-            # Extract results from JSON (with fallback to legacy regex)
+            # Extract results from JSON
             from smithers.services.claude import ClaudeResult
 
             fix_result = ClaudeResult(output=output, exit_code=0, success=True)
             json_output = fix_result.extract_json()
 
             if json_output:
-                # Use JSON output
                 logger.debug(f"PR #{pr_num} JSON output: {json_output}")
                 if not json_output.get("done", False):
                     all_done = False
@@ -401,20 +399,8 @@ def _run_fix_iteration(
                 total_unresolved += json_output.get("unresolved_before", 0)
                 total_addressed += json_output.get("addressed", 0)
             else:
-                # Fallback to legacy regex format
-                logger.debug(f"PR #{pr_num}: Using legacy regex parsing")
-                if not re.search(rf"PR_{pr_num}_DONE:\s*true", output):
-                    all_done = False
-                if re.search(rf"PR_{pr_num}_CI_STATUS:\s*failing", output):
-                    all_ci_passing = False
-
-                unresolved_match = re.search(rf"PR_{pr_num}_UNRESOLVED_BEFORE:\s*(\d+)", output)
-                addressed_match = re.search(rf"PR_{pr_num}_ADDRESSED:\s*(\d+)", output)
-
-                if unresolved_match:
-                    total_unresolved += int(unresolved_match.group(1))
-                if addressed_match:
-                    total_addressed += int(addressed_match.group(1))
+                logger.warning(f"PR #{pr_num}: No JSON output found, assuming not done")
+                all_done = False
         else:
             logger.warning(f"No output file found for PR #{pr_num}: {output_file}")
             console.print(f"[yellow]Warning: No output file found for PR #{pr_num}[/yellow]")
