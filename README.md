@@ -8,6 +8,8 @@ Like Mr. Burns' ever-faithful assistant, Smithers diligently handles the details
 
 - **Implement Mode**: Analyzes design documents and creates staged PRs with parallel execution
 - **Fix Mode**: Loops until all review comments are addressed and CI passes
+- **Plan Mode**: Interactively create implementation plans with Claude before implementing
+- **Session Management**: Rejoin running tmux sessions after detaching or disconnecting
 - **Parallel Execution**: Uses git worktrees and tmux for concurrent stage implementation
 - **Claude AI Powered**: Leverages Claude Code CLI for intelligent code generation
 
@@ -47,6 +49,9 @@ smithers implement docs/my-feature.md --base main
 
 # With custom model
 smithers implement docs/my-feature.md --model claude-sonnet-4-20250514
+
+# Use an existing plan file (skip planning phase)
+smithers implement docs/my-feature.md --todo-file ~/.smithers/plans/my-plan.md
 ```
 
 ### Fix PR Review Comments
@@ -55,17 +60,39 @@ smithers implement docs/my-feature.md --model claude-sonnet-4-20250514
 # Fix review comments on specific PRs
 smithers fix docs/my-feature.md 123 124 125
 
+# Also accepts GitHub PR URLs
+smithers fix docs/my-feature.md https://github.com/owner/repo/pull/123
+
 # With max iterations limit
 smithers fix docs/my-feature.md 123 --max-iterations 5
 ```
 
-### Options
+### Interactive Planning
 
+```bash
+# Interactively create an implementation plan with Claude
+smithers plan
+
+# With custom output path
+smithers plan --output ~/plans/my-feature.md
 ```
---model, -m    Claude model to use (default: claude-opus-4-5-20251101)
---base, -b     Base branch for PRs (default: main)
---dry-run, -n  Show what would be done without executing
---verbose, -v  Enable verbose output
+
+Creates a plan file via an interactive Claude session that can later be used with `smithers implement --todo-file`.
+
+### Session Management
+
+```bash
+# List all running smithers tmux sessions
+smithers sessions
+
+# Rejoin the most recent session
+smithers rejoin
+
+# Rejoin a specific session
+smithers rejoin smithers-impl-my-feature
+
+# List sessions via rejoin command
+smithers rejoin --list
 ```
 
 ### Update Smithers
@@ -73,6 +100,17 @@ smithers fix docs/my-feature.md 123 --max-iterations 5
 ```bash
 smithers update
 ```
+
+### Common Options
+
+| Option | Short | Description | Commands |
+|--------|-------|-------------|----------|
+| `--model` | `-m` | Claude model to use (default: claude-opus-4-5-20251101) | all |
+| `--base` | `-b` | Base branch for PRs (default: main) | implement |
+| `--todo-file` | `-t` | Existing plan file to use | implement |
+| `--max-iterations` | | Max fix iterations, 0=unlimited (default: 0) | fix |
+| `--dry-run` | `-n` | Show what would be done without executing | implement, fix |
+| `--verbose` | `-v` | Enable verbose output | all |
 
 ### Secret Mode: Smithers Quote
 
@@ -84,9 +122,15 @@ Prints a random, sycophantic quote from Mr. Burns' ever-loyal assistant.
 
 ## How It Works
 
+### Plan Mode
+
+1. **Interactive Session**: Launches Claude in plan mode for collaborative planning
+2. **Plan Creation**: Work with Claude to design your implementation approach
+3. **Output**: Saves the plan file for later use with `smithers implement --todo-file`
+
 ### Implement Mode
 
-1. **Planning Phase**: Claude analyzes the design document and creates a TODO file with implementation stages
+1. **Planning Phase**: Claude analyzes the design document and creates a TODO file with implementation stages (or uses an existing plan file)
 2. **Implementation Phase**:
    - Stages are grouped by parallel group
    - Git worktrees are created for each stage
