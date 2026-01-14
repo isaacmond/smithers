@@ -165,7 +165,7 @@ class ClaudeService:
                 success=success,
             )
         except subprocess.SubprocessError as e:
-            logger.error(f"Failed to run Claude CLI: {e}")
+            logger.exception("Failed to run Claude CLI")
             raise ClaudeError(f"Failed to run Claude CLI: {e}") from e
 
     def create_tmux_command(

@@ -123,14 +123,6 @@ smithers update
 | `--dry-run` | `-n` | Show what would be done without executing | implement, fix |
 | `--verbose` | `-v` | Enable verbose output | all |
 
-### Secret Mode: Smithers Quote
-
-```bash
-smithers quote
-```
-
-Prints a random, sycophantic quote from Mr. Burns' ever-loyal assistant.
-
 ## How It Works
 
 ### Plan Mode

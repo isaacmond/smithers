@@ -67,7 +67,7 @@ def plan(
         claude_service.ensure_dependencies()
         logger.info("All dependencies satisfied")
     except DependencyMissingError as e:
-        logger.error(f"Missing dependencies: {e}")
+        logger.exception("Missing dependencies")
         print_error(str(e))
         console.print("\nInstall with:")
         console.print("  npm install -g @anthropic-ai/claude-code")
@@ -112,7 +112,7 @@ def plan(
             console.print(f"[yellow]Claude exited with code {result.returncode}[/yellow]")
 
     except subprocess.SubprocessError as e:
-        logger.error(f"Failed to run Claude: {e}")
+        logger.exception("Failed to run Claude")
         raise SmithersError(f"Failed to run Claude: {e}") from e
 
     # Look for the plan file
@@ -131,5 +131,5 @@ def plan(
         console.print("\nTo implement this plan, run:")
         console.print(f"  [cyan]smithers implement <design_doc> --todo-file {output_path}[/cyan]")
     except OSError as e:
-        logger.error(f"Failed to copy plan file: {e}")
+        logger.exception("Failed to copy plan file")
         raise SmithersError(f"Failed to copy plan file: {e}") from e

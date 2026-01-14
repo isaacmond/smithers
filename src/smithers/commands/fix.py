@@ -120,7 +120,7 @@ def fix(
         try:
             pr_numbers.append(parse_pr_identifier(identifier))
         except ValueError as e:
-            logger.error(f"Invalid PR identifier: {identifier}: {e}")
+            logger.exception(f"Invalid PR identifier: {identifier}")
             print_error(str(e))
             raise typer.Exit(1) from e
 
@@ -153,7 +153,7 @@ def fix(
         github_service.ensure_dependencies()
         logger.info("All dependencies satisfied")
     except DependencyMissingError as e:
-        logger.error(f"Missing dependencies: {e}")
+        logger.exception("Missing dependencies")
         print_error(str(e))
         raise typer.Exit(1) from e
 
@@ -177,7 +177,7 @@ def fix(
             logger.info(f"PR #{pr_num}: branch={pr_info.branch}")
             console.print(f"  PR #{pr_num}: {pr_info.branch}")
         except SmithersError as e:
-            logger.error(f"Failed to get info for PR #{pr_num}: {e}")
+            logger.exception(f"Failed to get info for PR #{pr_num}")
             print_error(f"Failed to get info for PR #{pr_num}: {e}")
             raise typer.Exit(1) from e
 

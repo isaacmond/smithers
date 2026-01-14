@@ -18,11 +18,11 @@ SMITHERS_QUOTES: tuple[str, ...] = (
         "Sir, in the spirit of the festival and everything, I'd just like to say that... "
         "I... love you. In those colors!"
     ),
-    "Oh, you never cease to amaze me, sir.",
-    "You looken sharpen todayen, Mein Herr.",
     "You are noble and poetic in defeat, sir.",
+    "Oh, you never cease to amaze me, sir.",
     "For the love of God, sir! There are two seats!",
     "Oh, who am I kidding? The boathouse was the time!",
+    "You've been reading my wishbook, sir.",
     # Work & Duties
     (
         "Your new duties will include answering Mr. Burns' phone, preparing his tax return, "
@@ -61,13 +61,19 @@ SMITHERS_QUOTES: tuple[str, ...] = (
         "Well sir, you have certainly vanquished your enemies. The elementary school, the "
         "local tavern, the old age home. You must be very proud."
     ),
+    (
+        "Attention Homer Simpson, you have been promoted. You are now an executive. "
+        "Take three minutes to say goodbye to your former friends and report to room 503 "
+        "for reassignment to a better life."
+    ),
+    (
+        "I let Mr. Burns treat me like a pet. Why do I put up with this? "
+        "What am I doing with my life?"
+    ),
     # Unflappable Loyalty
     "Right, sir. It's... scalding me as we speak.",
     "But sir, I'm flaming!",
-    "I'll go find a spherical sponge, sir.",
     "I think women and seamen don't mix.",
-    "Oh, the money you've contributed to anti-helmet laws has really paid off, sir.",
-    "Oh my God, Mr. Burns is dead! Why do the good always die so young?",
     "Uh, if you did it, sir?",
     # Exasperation & Wit
     "I'm allergic to bee stings. They cause me to, uh, die.",
@@ -80,19 +86,25 @@ SMITHERS_QUOTES: tuple[str, ...] = (
         "were here, I'd kick you right in your bony, old behind!"
     ),
     "Damn this common gutter blood in my veins!",
+    (
+        "There isn't any food in any of these trees. Please, Bart, we've got to hurry! "
+        "I can't be the last one to reach the cabin."
+    ),
     # Burns' Schemes & Villainy
     (
         "But sir, every plant and tree will die, owls will deafen us with incessant hooting, "
         "the town's sundial will be useless. I don't want any part of this project. "
         "It's unconscionably fiendish."
     ),
-    # Miscellaneous Classic Lines
-    "They're fighting like Iran and Iraq! ...Persia and Mesopotamia.",
-    "Absolutely, sir. Boy, would I!",
-    "Priceless sir, you made the word 'ceremonies' frightening.",
+    # More Verified Classics
+    "This resume is very impressive. Let me be the first to say 'abibu gazini'.",
+    "I work for Monty Burns, M-M-M-M-Monty Burns!",
     "People like dogs, Mr. Burns.",
-    "I'll get the amnesia ray, sir.",
-    "That's the barking bird, sir.",
+    # Not actually Smithers - this is Burns' computer speaking TO him. Too funny to omit.
+    (
+        "Hello, Smithers. You're quite good at turning me on. "
+        "You probably should ignore that."
+    ),
 )
 
 

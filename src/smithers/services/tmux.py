@@ -138,7 +138,7 @@ class TmuxService:
             )
             logger.info(f"Tmux session '{session}' exited with code: {result.returncode}")
         except subprocess.SubprocessError as e:
-            logger.error(f"Failed to start tmux session '{session}': {e}")
+            logger.exception(f"Failed to start tmux session '{session}'")
             raise TmuxError(f"Failed to start tmux session '{session}': {e}") from e
 
         raise SystemExit(result.returncode)
@@ -189,7 +189,7 @@ class TmuxService:
             logger.info(f"Tmux session '{session}' created successfully")
         except subprocess.CalledProcessError as e:
             log_subprocess_result(logger, tmux_cmd, e.returncode, e.stdout, e.stderr, success=False)
-            logger.error(f"Failed to create tmux session '{session}': {e.stderr}")
+            logger.exception(f"Failed to create tmux session '{session}': {e.stderr}")
             raise TmuxError(f"Failed to create tmux session '{session}': {e.stderr}") from e
 
         return session

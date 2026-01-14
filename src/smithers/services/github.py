@@ -71,10 +71,10 @@ class GitHubService:
             return owner, name
         except subprocess.CalledProcessError as e:
             log_subprocess_result(logger, cmd, e.returncode, e.stdout, e.stderr, success=False)
-            logger.error(f"Failed to get repo info: {e.stderr}")
+            logger.exception(f"Failed to get repo info: {e.stderr}")
             raise GitHubError(f"Failed to get repo info: {e.stderr}") from e
         except (json.JSONDecodeError, KeyError) as e:
-            logger.error(f"Failed to parse repo info: {e}")
+            logger.exception("Failed to parse repo info")
             raise GitHubError(f"Failed to parse repo info: {e}") from e
 
     def check_dependencies(self) -> list[str]:
@@ -143,10 +143,10 @@ class GitHubService:
             return pr_info
         except subprocess.CalledProcessError as e:
             log_subprocess_result(logger, cmd, e.returncode, e.stdout, e.stderr, success=False)
-            logger.error(f"Failed to get PR #{pr_number} info: {e.stderr}")
+            logger.exception(f"Failed to get PR #{pr_number} info: {e.stderr}")
             raise GitHubError(f"Failed to get PR #{pr_number} info: {e.stderr}") from e
         except (json.JSONDecodeError, KeyError) as e:
-            logger.error(f"Failed to parse PR #{pr_number} info: {e}")
+            logger.exception(f"Failed to parse PR #{pr_number} info")
             raise GitHubError(f"Failed to parse PR #{pr_number} info: {e}") from e
 
     def get_pr_branch(self, pr_number: int) -> str:
@@ -302,7 +302,9 @@ class GitHubService:
 
             # Filter to only unresolved
             unresolved = [c for c in comments if not c.is_resolved]
-            logger.info(f"PR #{pr_number}: {len(unresolved)} unresolved comments (total {len(comments)})")
+            logger.info(
+                f"PR #{pr_number}: {len(unresolved)} unresolved (total {len(comments)})"
+            )
             return unresolved
         except subprocess.CalledProcessError as e:
             logger.warning(f"Failed to get comments for PR #{pr_number}: {e.stderr}")
@@ -366,8 +368,8 @@ class GitHubService:
             return pr_number
         except subprocess.CalledProcessError as e:
             log_subprocess_result(logger, cmd[:6], e.returncode, e.stdout, e.stderr, success=False)
-            logger.error(f"Failed to create PR: {e.stderr}")
+            logger.exception(f"Failed to create PR: {e.stderr}")
             raise GitHubError(f"Failed to create PR: {e.stderr}") from e
         except (ValueError, IndexError) as e:
-            logger.error(f"Failed to parse PR number from output: {e}")
+            logger.exception("Failed to parse PR number from output")
             raise GitHubError(f"Failed to parse PR number from output: {e}") from e

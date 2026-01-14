@@ -97,7 +97,7 @@ class GitService:
             logger.info(f"Worktree created for branch: {branch}")
         except subprocess.CalledProcessError as e:
             log_subprocess_result(logger, cmd, e.returncode, e.stdout, e.stderr, success=False)
-            logger.error(f"Failed to create worktree for {branch}: {e.stderr}")
+            logger.exception(f"Failed to create worktree for {branch}: {e.stderr}")
             raise WorktreeError(f"Failed to create worktree for {branch}: {e.stderr}") from e
 
         # Track for cleanup
@@ -158,7 +158,9 @@ class GitService:
                 logger.debug(f"Worktree {branch} cleaned up successfully")
             else:
                 logger.warning(f"Worktree cleanup for {branch} returned {result.returncode}")
-                log_subprocess_result(logger, cmd, result.returncode, result.stdout, result.stderr, success=False)
+                log_subprocess_result(
+                    logger, cmd, result.returncode, result.stdout, result.stderr, success=False
+                )
         except subprocess.CalledProcessError:
             logger.warning(f"Failed to cleanup worktree for {branch}")
             print_warning(f"Failed to cleanup worktree for {branch}")

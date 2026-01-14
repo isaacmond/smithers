@@ -182,7 +182,7 @@ def implement(
         claude_service.ensure_dependencies()
         logger.info("All dependencies satisfied")
     except DependencyMissingError as e:
-        logger.error(f"Missing dependencies: {e}")
+        logger.exception("Missing dependencies")
         print_error(str(e))
         console.print("\nInstall with:")
         console.print("  git clone https://github.com/coderabbitai/git-worktree-runner.git")
