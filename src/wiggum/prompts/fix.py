@@ -167,6 +167,9 @@ For each comment:
 
 ### 8. Resolve Threads When Appropriate
 Use the GitHub GraphQL API to resolve review threads after addressing them.
+### 9. Self-review and cleanup (if available in your environment)
+- Run `/code-review:code-review` to review your changes and apply actionable feedback
+- Run `/de-slopify` to remove AI-generated slop from the branch before finalizing
 {quality_checks_section}
 ### 10. Commit and Push
 - Commit with descriptive message

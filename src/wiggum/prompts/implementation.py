@@ -42,14 +42,17 @@ Implement **Stage {stage_number}** as specified in the TODO file above.
    - bin/run_lint.sh
    - bin/run_type_check.sh
    - bin/run_test.sh
-6. **Commit and push** with clear messages
-7. **Create the PR**:
+6. **Self-review and cleanup (if available in your environment)**:
+   - Run `/code-review:code-review` to review your diff and apply actionable feedback
+   - Run `/de-slopify` to remove AI-generated slop from the branch before finalizing
+7. **Commit and push** with clear messages
+8. **Create the PR**:
    - Title should reflect the stage
    - Body should include:
      - What this stage implements
      - Reference to previous PR if dependent
      - The full stage list from the TODO (so reviewers see the big picture)
-8. **Update the TODO file** (in the MAIN repository, not this worktree):
+9. **Update the TODO file** (in the MAIN repository, not this worktree):
    - Set this stage's Status to: completed
    - Fill in the PR number
    - Check off completed acceptance criteria

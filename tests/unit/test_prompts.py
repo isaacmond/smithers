@@ -58,6 +58,8 @@ class TestImplementationPrompt:
         assert "/worktrees/feature-test" in prompt
         assert "STAGE_1_COMPLETE" in prompt
         assert "STAGE_1_PR" in prompt
+        assert "code-review:code-review" in prompt
+        assert "de-slopify" in prompt
 
     def test_prompt_contains_quality_checks(self) -> None:
         """Test that the prompt includes quality check instructions."""
@@ -126,6 +128,8 @@ class TestFixPrompts:
         assert "feature/test" in prompt
         assert "PR_123_DONE" in prompt
         assert "PR_123_CI_STATUS" in prompt
+        assert "code-review:code-review" in prompt
+        assert "de-slopify" in prompt
 
     def test_fix_prompt_contains_claude_prefix_instruction(self) -> None:
         """Test that fix prompt instructs to prefix replies with [CLAUDE]."""
