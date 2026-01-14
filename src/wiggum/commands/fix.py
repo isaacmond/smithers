@@ -5,6 +5,7 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
+from urllib.parse import urlparse
 
 import typer
 
@@ -18,6 +19,42 @@ from wiggum.services.github import GitHubService
 from wiggum.services.tmux import TmuxService
 
 
+def parse_pr_identifier(identifier: str) -> int:
+    """Parse a PR number from either a number string or a GitHub PR URL.
+
+    Args:
+        identifier: Either a PR number (e.g., "123") or a GitHub PR URL
+                   (e.g., "https://github.com/owner/repo/pull/123")
+
+    Returns:
+        The PR number as an integer
+
+    Raises:
+        ValueError: If the identifier cannot be parsed as a PR number
+    """
+    # Try parsing as a simple integer first
+    try:
+        return int(identifier)
+    except ValueError:
+        pass
+
+    # Try parsing as a GitHub PR URL
+    parsed = urlparse(identifier)
+    if parsed.netloc in ("github.com", "www.github.com"):
+        # URL format: https://github.com/owner/repo/pull/123
+        parts = parsed.path.strip("/").split("/")
+        if len(parts) >= 4 and parts[2] == "pull":
+            try:
+                return int(parts[3])
+            except ValueError:
+                pass
+
+    raise ValueError(
+        f"Invalid PR identifier: {identifier}. "
+        "Expected a PR number (e.g., 123) or GitHub URL (e.g., https://github.com/owner/repo/pull/123)"
+    )
+
+
 def fix(
     design_doc: Annotated[
         Path,
@@ -29,9 +66,9 @@ def fix(
             readable=True,
         ),
     ],
-    pr_numbers: Annotated[
-        list[int],
-        typer.Argument(help="PR numbers to process"),
+    pr_identifiers: Annotated[
+        list[str],
+        typer.Argument(help="PR numbers or GitHub PR URLs to process"),
     ],
     model: Annotated[
         str,
@@ -55,9 +92,18 @@ def fix(
     This command loops until all review comments are addressed and CI passes
     on all specified PRs.
     """
-    if not pr_numbers:
-        print_error("At least one PR number is required")
+    if not pr_identifiers:
+        print_error("At least one PR number or URL is required")
         raise typer.Exit(1)
+
+    # Parse PR identifiers into numbers
+    pr_numbers: list[int] = []
+    for identifier in pr_identifiers:
+        try:
+            pr_numbers.append(parse_pr_identifier(identifier))
+        except ValueError as e:
+            print_error(str(e))
+            raise typer.Exit(1) from e
 
     # Set up configuration
     config = Config(
