@@ -36,9 +36,9 @@ To release a new version of wiggum:
    uv run pytest tests/
    ```
 
-3. **Commit the version bump**:
+3. **Commit the version bump** (uv.lock is auto-updated by running checks):
    ```bash
-   git add pyproject.toml src/wiggum/__init__.py
+   git add pyproject.toml src/wiggum/__init__.py uv.lock
    git commit -m "Bump version to X.Y.Z"
    ```
 
