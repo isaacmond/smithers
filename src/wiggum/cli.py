@@ -6,6 +6,7 @@ from rich.console import Console
 from wiggum import __version__
 from wiggum.commands.fix import fix
 from wiggum.commands.implement import implement
+from wiggum.commands.update import update
 
 # Create the Typer app
 app = typer.Typer(
@@ -18,6 +19,9 @@ app = typer.Typer(
 # Add commands
 app.command(name="implement")(implement)
 app.command(name="fix")(fix)
+app.command(name="update")(update)
+# Backwards-compatible alias for self-update
+app.command(name="update-self", help="Alias for update")(update)
 
 
 @app.callback(invoke_without_command=True)

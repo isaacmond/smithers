@@ -67,6 +67,18 @@ wiggum fix docs/my-feature.md 123 --max-iterations 5
 --verbose, -v  Enable verbose output
 ```
 
+### Update Wiggum
+
+```bash
+# Update to the latest released version
+wiggum update
+
+# Alias
+wiggum update-self
+```
+
+The update command uses `uv tool upgrade wiggum` under the hood. Ensure `uv` is installed and on your `PATH`.
+
 ## How It Works
 
 ### Implement Mode
