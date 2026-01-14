@@ -47,18 +47,27 @@ class GitService:
             raise DependencyMissingError(missing)
 
     def create_worktree(self, branch: str, base: str = "main") -> Path:
-        """Create a worktree for the given branch.
+        """Create a worktree for the given branch, or return existing one.
 
         Args:
             branch: The branch name for the new worktree
             base: The base ref to create the branch from
 
         Returns:
-            Path to the created worktree
+            Path to the created or existing worktree
 
         Raises:
             WorktreeError: If worktree creation fails
         """
+        # Check if worktree already exists
+        existing_path = self.get_worktree_path(branch)
+        if existing_path is not None:
+            print_info(f"Using existing worktree for branch: {branch} at {existing_path}")
+            # Track for cleanup if not already tracked
+            if branch not in self.created_worktrees:
+                self.created_worktrees.append(branch)
+            return existing_path
+
         print_info(f"Creating worktree for branch: {branch} (from {base})")
 
         try:
