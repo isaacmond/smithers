@@ -29,9 +29,9 @@ The TODO file should have this structure:
 
 ### Stage 1: [Title]
 - **Status**: pending
-- **Branch**: [suggested branch name]
+- **Branch**: [suggested branch name, e.g., stage-1-models]
 - **Parallel group**: [group_id - stages with same group_id run in parallel]
-- **Depends on**: none (or Stage N)
+- **Depends on**: none (or the actual branch name of the dependency, e.g., stage-1-models)
 - **PR**: (to be filled in)
 - **Description**: [Detailed description of what this stage implements]
 - **Files to create/modify**:
@@ -43,9 +43,9 @@ The TODO file should have this structure:
 
 ### Stage 2: [Title]
 - **Status**: pending
-- **Branch**: [suggested branch name]
+- **Branch**: [suggested branch name, e.g., stage-2-api]
 - **Parallel group**: [group_id]
-- **Depends on**: Stage 1
+- **Depends on**: stage-1-models (use the actual branch name, NOT "Stage 1")
 - **PR**: (to be filled in)
 - **Description**: [Detailed description]
 - **Files to create/modify**:
@@ -58,6 +58,8 @@ The TODO file should have this structure:
 ## Notes
 [Any additional notes, risks, or considerations]
 ```
+
+IMPORTANT: For the "Depends on" field, use the actual branch name (e.g., "stage-1-models"), NOT "Stage 1". Use "none" if there is no dependency.
 
 ### Guidelines
 - Break the work into 2-6 logical stages
@@ -81,10 +83,33 @@ Example:
 - Stage 3 (integration): Parallel group: 2    (waits for group 1 to complete)
 
 ### Output
-After creating the TODO file, output:
-TODO_FILE_CREATED: {todo_file_path}
-NUM_STAGES: <number>
-PARALLEL_GROUPS: <comma-separated list of unique group IDs in execution order>
+After creating the TODO file, output the following JSON block at the END of your response:
+
+---JSON_OUTPUT---
+{{
+  "todo_file_created": "{todo_file_path}",
+  "num_stages": <number>,
+  "execution_plan": [
+    {{
+      "group": "<group_id>",
+      "stages": [
+        {{"number": 1, "branch": "<branch-name>", "base": "<base-branch-or-none>"}},
+        {{"number": 2, "branch": "<branch-name>", "base": "<base-branch-or-none>"}}
+      ]
+    }},
+    {{
+      "group": "<next_group_id>",
+      "stages": [
+        {{"number": 3, "branch": "<branch-name>", "base": "<dependency-branch-name>"}}
+      ]
+    }}
+  ]
+}}
+---END_JSON---
+
+The execution_plan lists groups in execution order. Each group contains stages that run in parallel.
+- "base" should be "main" (or the configured base branch) for stages with no dependency
+- "base" should be the actual branch name for stages that depend on another stage
 
 ## Begin
 Analyze the design and create the implementation plan."""

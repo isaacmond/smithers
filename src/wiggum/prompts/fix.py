@@ -85,10 +85,15 @@ Addressing review comments and CI/CD failures on PRs: {pr_numbers}
 - Be specific about what action is needed for each item
 
 ### Output
-After creating the TODO file, output:
-TODO_FILE_CREATED: {todo_file_path}
-NUM_COMMENTS: <total number of unresolved comments across all PRs>
-NUM_CI_FAILURES: <total number of failing CI checks across all PRs>
+After creating the TODO file, output the following JSON block at the END of your response:
+
+---JSON_OUTPUT---
+{{
+  "todo_file_created": "{todo_file_path}",
+  "num_comments": <total number of unresolved comments across all PRs>,
+  "num_ci_failures": <total number of failing CI checks across all PRs>
+}}
+---END_JSON---
 
 ## Begin
 Fetch the PR comments, check CI status, and create the fix plan."""
@@ -181,14 +186,18 @@ After pushing, verify CI/CD status:
 - If any checks are FAILING, fix them
 {merge_conflict_section}
 ## Output Format
-After processing PR #{pr_number}, output:
-PR_{pr_number}_MERGE_CONFLICTS: <none|resolved>
-PR_{pr_number}_UNRESOLVED_BEFORE: <count>
-PR_{pr_number}_ADDRESSED: <count>
-PR_{pr_number}_CI_STATUS: <passing|failing|pending>
+After processing PR #{pr_number}, output the following JSON block at the END of your response:
 
-If NO unresolved comments AND CI passing:
-PR_{pr_number}_DONE: true
+---JSON_OUTPUT---
+{{
+  "pr_number": {pr_number},
+  "merge_conflicts": "<none|resolved>",
+  "unresolved_before": <count>,
+  "addressed": <count>,
+  "ci_status": "<passing|failing|pending>",
+  "done": <true if NO unresolved comments AND CI passing, false otherwise>
+}}
+---END_JSON---
 
 ## Begin
 Process PR #{pr_number} now."""

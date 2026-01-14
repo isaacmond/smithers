@@ -37,7 +37,7 @@ Implement **Stage {stage_number}** as specified in the TODO file above.
    - git fetch origin
    - git merge origin/{worktree_base}
    - **RESOLVE ALL MERGE CONFLICTS** (see Merge Conflict Resolution section below)
-4. **Implement the changes** as specified in the TODO
+4. **Implement the changes** as specified in the TODO, offloading as much logic and coding as possible to Claude Code CLI
 5. **Run quality checks** (MUST ALL PASS):
    - bin/run_lint.sh
    - bin/run_type_check.sh
@@ -46,11 +46,13 @@ Implement **Stage {stage_number}** as specified in the TODO file above.
    - Run `/code-review:code-review` to review your diff and apply actionable feedback
    - Run `/de-slopify` to remove AI-generated slop from the branch before finalizing
 7. **Commit and push** with clear messages
-8. **Create the PR**:
+8. **Create the PR (stacked when sequential)**:
+   - If this stage depends on a previous stage, open the PR into that prior stage's PR/branch (stacked PR), not main
+   - If this stage is in a parallel group (no dependency), open the PR into '{worktree_base}'
    - Title should reflect the stage
    - Body should include:
      - What this stage implements
-     - Reference to previous PR if dependent
+     - The branch/PR this stacks on (if applicable) with a clear link
      - The full stage list from the TODO (so reviewers see the big picture)
 9. **Update the TODO file** (in the MAIN repository, not this worktree):
    - Set this stage's Status to: completed
@@ -63,10 +65,16 @@ If the plan needs adjustment:
 - The TODO file updates will be coordinated after all parallel stages complete
 
 ### Output
-When Stage {stage_number} is complete, output:
-STAGE_{stage_number}_COMPLETE: true
-STAGE_{stage_number}_PR: <pr_number>
-STAGE_{stage_number}_BRANCH: {branch}
+When Stage {stage_number} is complete, output the following JSON block at the END of your response:
+
+---JSON_OUTPUT---
+{{
+  "stage_number": {stage_number},
+  "complete": true,
+  "pr_number": <pr_number>,
+  "branch": "{branch}"
+}}
+---END_JSON---
 
 ## Begin
 Implement Stage {stage_number} now."""

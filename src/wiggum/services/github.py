@@ -43,6 +43,29 @@ class ReviewComment:
 class GitHubService:
     """Service for GitHub CLI (gh) operations."""
 
+    def _get_repo_info(self) -> tuple[str, str]:
+        """Get owner and repo name from current git repository.
+
+        Returns:
+            Tuple of (owner, repo_name)
+
+        Raises:
+            GitHubError: If unable to determine repo info
+        """
+        try:
+            result = subprocess.run(
+                ["gh", "repo", "view", "--json", "owner,name"],
+                capture_output=True,
+                check=True,
+                text=True,
+            )
+            data = json.loads(result.stdout)
+            return data["owner"]["login"], data["name"]
+        except subprocess.CalledProcessError as e:
+            raise GitHubError(f"Failed to get repo info: {e.stderr}") from e
+        except (json.JSONDecodeError, KeyError) as e:
+            raise GitHubError(f"Failed to parse repo info: {e}") from e
+
     def check_dependencies(self) -> list[str]:
         """Check for required dependencies and return list of missing ones."""
         missing: list[str] = []
@@ -170,9 +193,12 @@ class GitHubService:
         Returns:
             List of unresolved review comments
         """
+        # Get owner/repo dynamically from current repository
+        owner, repo = self._get_repo_info()
+
         query = """
-        query($number: Int!) {
-          repository(owner: "Metaview", name: "wiggum") {
+        query($owner: String!, $repo: String!, $number: Int!) {
+          repository(owner: $owner, name: $repo) {
             pullRequest(number: $number) {
               reviewThreads(first: 100) {
                 nodes {
@@ -201,6 +227,10 @@ class GitHubService:
                     "graphql",
                     "-f",
                     f"query={query}",
+                    "-F",
+                    f"owner={owner}",
+                    "-F",
+                    f"repo={repo}",
                     "-F",
                     f"number={pr_number}",
                 ],

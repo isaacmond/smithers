@@ -339,22 +339,34 @@ def _run_fix_iteration(
                 print_header(f"OUTPUT FROM PR #{pr_num}")
                 console.print(output)
 
-            # Check if this PR is done
-            if not re.search(rf"PR_{pr_num}_DONE:\s*true", output):
-                all_done = False
+            # Extract results from JSON (with fallback to legacy regex)
+            from wiggum.services.claude import ClaudeResult
 
-            # Check CI status
-            if re.search(rf"PR_{pr_num}_CI_STATUS:\s*failing", output):
-                all_ci_passing = False
+            fix_result = ClaudeResult(output=output, exit_code=0, success=True)
+            json_output = fix_result.extract_json()
 
-            # Extract counts
-            unresolved_match = re.search(rf"PR_{pr_num}_UNRESOLVED_BEFORE:\s*(\d+)", output)
-            addressed_match = re.search(rf"PR_{pr_num}_ADDRESSED:\s*(\d+)", output)
+            if json_output:
+                # Use JSON output
+                if not json_output.get("done", False):
+                    all_done = False
+                if json_output.get("ci_status") == "failing":
+                    all_ci_passing = False
+                total_unresolved += json_output.get("unresolved_before", 0)
+                total_addressed += json_output.get("addressed", 0)
+            else:
+                # Fallback to legacy regex format
+                if not re.search(rf"PR_{pr_num}_DONE:\s*true", output):
+                    all_done = False
+                if re.search(rf"PR_{pr_num}_CI_STATUS:\s*failing", output):
+                    all_ci_passing = False
 
-            if unresolved_match:
-                total_unresolved += int(unresolved_match.group(1))
-            if addressed_match:
-                total_addressed += int(addressed_match.group(1))
+                unresolved_match = re.search(rf"PR_{pr_num}_UNRESOLVED_BEFORE:\s*(\d+)", output)
+                addressed_match = re.search(rf"PR_{pr_num}_ADDRESSED:\s*(\d+)", output)
+
+                if unresolved_match:
+                    total_unresolved += int(unresolved_match.group(1))
+                if addressed_match:
+                    total_addressed += int(addressed_match.group(1))
         else:
             console.print(f"[yellow]Warning: No output file found for PR #{pr_num}[/yellow]")
             all_done = False

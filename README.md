@@ -97,6 +97,15 @@ The update command uses `uv tool upgrade wiggum` under the hood. Ensure `uv` is 
 2. **Process PRs**: Creates worktrees and runs Claude in parallel to address issues
 3. **Loop**: Continues until all comments are resolved and CI passes
 
+## Architecture
+
+Wiggum uses a **prompt-first architecture** where Claude Code handles all the complex logic:
+
+- **Prompts do the heavy lifting**: Implementation, PR creation, review fixes, and CI debugging are all handled by detailed prompts
+- **Python handles orchestration**: Git worktrees, tmux sessions, and loop control
+- **Structured JSON output**: Claude returns structured JSON for reliable parsing
+- **Works with any GitHub repo**: Automatically detects the current repository
+
 ## Development
 
 ```bash

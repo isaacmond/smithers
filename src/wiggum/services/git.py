@@ -134,14 +134,12 @@ class GitService:
     def get_branch_dependency_base(
         self,
         depends_on: str | None,
-        stages_data: dict[int, str],
         default_base: str = "main",
     ) -> str:
         """Determine the base ref for a stage based on its dependencies.
 
         Args:
-            depends_on: The dependency string (e.g., "Stage 1" or None)
-            stages_data: Mapping of stage numbers to branch names
+            depends_on: The dependency branch name (e.g., "stage-1-models") or None/"none"
             default_base: Default base if no dependency
 
         Returns:
@@ -150,13 +148,5 @@ class GitService:
         if depends_on is None or depends_on.lower() == "none":
             return default_base
 
-        # Extract stage number from "Stage N"
-        import re
-
-        match = re.search(r"(\d+)", depends_on)
-        if match:
-            dep_stage_num = int(match.group(1))
-            if dep_stage_num in stages_data:
-                return stages_data[dep_stage_num]
-
-        return default_base
+        # depends_on is now the actual branch name (no more "Stage N" parsing needed)
+        return depends_on

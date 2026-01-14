@@ -1,8 +1,11 @@
 """Claude CLI service for AI-powered code generation."""
 
+import json
+import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from wiggum.console import print_info
 from wiggum.exceptions import ClaudeError, DependencyMissingError
@@ -25,8 +28,6 @@ class ClaudeResult:
         Returns:
             The value if found, None otherwise
         """
-        import re
-
         pattern = rf"{re.escape(key)}:\s*(\S+)"
         match = re.search(pattern, self.output)
         return match.group(1) if match else None
@@ -43,8 +44,6 @@ class ClaudeResult:
         value = self.extract_value(key)
         if value:
             # Extract just the digits
-            import re
-
             digits = re.search(r"\d+", value)
             if digits:
                 return int(digits.group())
@@ -61,6 +60,23 @@ class ClaudeResult:
         """
         value = self.extract_value(flag)
         return value is not None and value.lower() == "true"
+
+    def extract_json(self) -> dict[str, Any] | None:
+        """Extract structured JSON from the output.
+
+        Looks for a JSON block delimited by ---JSON_OUTPUT--- and ---END_JSON---.
+
+        Returns:
+            Parsed JSON as a dict, or None if not found or invalid
+        """
+        pattern = r"---JSON_OUTPUT---\s*(\{.*?\})\s*---END_JSON---"
+        match = re.search(pattern, self.output, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(1))
+            except json.JSONDecodeError:
+                return None
+        return None
 
 
 @dataclass

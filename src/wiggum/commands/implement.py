@@ -186,8 +186,10 @@ def _run_planning_phase(
     if not todo_file.exists():
         raise WiggumError(f"TODO file was not created at {todo_file}")
 
-    # Extract number of stages
-    num_stages = result.extract_int("NUM_STAGES")
+    # Extract planning output from JSON (with fallback to legacy format)
+    json_output = result.extract_json()
+    num_stages = json_output.get("num_stages") if json_output else result.extract_int("NUM_STAGES")
+
     if num_stages is None or num_stages < 1:
         raise WiggumError("Could not determine number of stages from Claude output")
 
@@ -233,9 +235,6 @@ def _run_implementation_phase(
 
     collected_prs: list[int] = []
 
-    # Build stage number -> branch mapping for dependency resolution
-    stages_data: dict[int, str] = {stage.number: stage.branch for stage in todo.stages}
-
     for group in parallel_groups:
         print_header(f"PROCESSING PARALLEL GROUP: {group}")
 
@@ -251,10 +250,9 @@ def _run_implementation_phase(
         for stage in stages_in_group:
             console.print(f"Preparing Stage {stage.number} (branch: {stage.branch})")
 
-            # Determine base for worktree
+            # Determine base for worktree (depends_on is now the actual branch name)
             worktree_base = git_service.get_branch_dependency_base(
                 stage.depends_on,
-                stages_data,
                 base_branch,
             )
 
@@ -327,12 +325,24 @@ def _run_implementation_phase(
                     print_header(f"OUTPUT FROM STAGE {stage.number}")
                     console.print(output)
 
-                # Extract PR number
-                import re
+                # Extract PR number from JSON (with fallback to legacy regex)
+                from wiggum.services.claude import ClaudeResult
 
-                pr_match = re.search(rf"STAGE_{stage.number}_PR:\s*(\d+)", output)
-                if pr_match:
-                    pr_num = int(pr_match.group(1))
+                stage_result = ClaudeResult(output=output, exit_code=0, success=True)
+                json_output = stage_result.extract_json()
+
+                pr_num: int | None = None
+                if json_output:
+                    pr_num = json_output.get("pr_number")
+                else:
+                    # Fallback to legacy regex format
+                    import re
+
+                    pr_match = re.search(rf"STAGE_{stage.number}_PR:\s*(\d+)", output)
+                    if pr_match:
+                        pr_num = int(pr_match.group(1))
+
+                if pr_num:
                     collected_prs.append(pr_num)
                     print_success(f"Stage {stage.number} complete. PR #{pr_num}")
                 else:

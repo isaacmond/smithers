@@ -21,8 +21,9 @@ class TestPlanningPrompt:
         assert "/path/to/design.md" in prompt
         assert "# Design" in prompt
         assert "/path/to/todo.md" in prompt
-        assert "TODO_FILE_CREATED" in prompt
-        assert "NUM_STAGES" in prompt
+        assert "---JSON_OUTPUT---" in prompt
+        assert '"num_stages"' in prompt
+        assert '"todo_file_created"' in prompt
 
     def test_prompt_contains_guidelines(self) -> None:
         """Test that the prompt contains necessary guidelines."""
@@ -56,8 +57,9 @@ class TestImplementationPrompt:
         assert "Stage 1" in prompt
         assert "feature/test" in prompt
         assert "/worktrees/feature-test" in prompt
-        assert "STAGE_1_COMPLETE" in prompt
-        assert "STAGE_1_PR" in prompt
+        assert "---JSON_OUTPUT---" in prompt
+        assert '"complete"' in prompt
+        assert '"pr_number"' in prompt
         assert "code-review:code-review" in prompt
         assert "de-slopify" in prompt
 
@@ -94,6 +96,22 @@ class TestImplementationPrompt:
         assert "Merge Conflict" in prompt
         assert "conflict markers" in prompt
 
+    def test_prompt_mentions_pr_stacking_and_claude(self) -> None:
+        """Test that implementation prompt clarifies PR stacking and Claude usage."""
+        prompt = render_implementation_prompt(
+            stage_number=2,
+            branch="feature/test",
+            worktree_path=Path("/worktrees/feature-test"),
+            worktree_base="main",
+            design_doc_path=Path("/path/to/design.md"),
+            design_content="# Design",
+            todo_file_path=Path("/path/to/todo.md"),
+            todo_content="# TODO",
+        )
+
+        assert "stacked" in prompt
+        assert "Claude Code" in prompt
+
 
 class TestFixPrompts:
     """Tests for the fix prompt templates."""
@@ -126,8 +144,9 @@ class TestFixPrompts:
 
         assert "PR #123" in prompt
         assert "feature/test" in prompt
-        assert "PR_123_DONE" in prompt
-        assert "PR_123_CI_STATUS" in prompt
+        assert "---JSON_OUTPUT---" in prompt
+        assert '"done"' in prompt
+        assert '"ci_status"' in prompt
         assert "code-review:code-review" in prompt
         assert "de-slopify" in prompt
 
