@@ -14,14 +14,14 @@ from smithers.commands.quote import print_random_quote
 from smithers.console import console, print_error, print_header, print_info, print_success
 from smithers.exceptions import DependencyMissingError, SmithersError
 from smithers.logging_config import get_logger
-
-logger = get_logger("smithers.commands.fix")
 from smithers.models.config import Config, set_config
 from smithers.prompts.fix import render_fix_planning_prompt, render_fix_prompt
 from smithers.services.claude import ClaudeService
 from smithers.services.git import GitService
 from smithers.services.github import GitHubService
 from smithers.services.tmux import TmuxService
+
+logger = get_logger("smithers.commands.fix")
 
 
 def parse_pr_identifier(identifier: str) -> int:
@@ -99,7 +99,18 @@ def fix(
     """
     print_random_quote()
 
+    logger.info("=" * 60)
+    logger.info("Starting fix command")
+    logger.info(f"  design_doc: {design_doc}")
+    logger.info(f"  pr_identifiers: {pr_identifiers}")
+    logger.info(f"  model: {model}")
+    logger.info(f"  dry_run: {dry_run}")
+    logger.info(f"  verbose: {verbose}")
+    logger.info(f"  max_iterations: {max_iterations}")
+    logger.info("=" * 60)
+
     if not pr_identifiers:
+        logger.error("No PR identifiers provided")
         print_error("At least one PR number or URL is required")
         raise typer.Exit(1)
 
@@ -109,8 +120,11 @@ def fix(
         try:
             pr_numbers.append(parse_pr_identifier(identifier))
         except ValueError as e:
+            logger.error(f"Invalid PR identifier: {identifier}: {e}")
             print_error(str(e))
             raise typer.Exit(1) from e
+
+    logger.info(f"Parsed PR numbers: {pr_numbers}")
 
     # Set up configuration
     config = Config(
@@ -127,6 +141,7 @@ def fix(
     github_service = GitHubService()
 
     # Check dependencies
+    logger.info("Checking dependencies")
     try:
         tmux_service.ensure_rejoinable_session(
             session_name=f"smithers-fix-{design_doc.stem}",
@@ -136,7 +151,9 @@ def fix(
         tmux_service.ensure_dependencies()
         claude_service.ensure_dependencies()
         github_service.ensure_dependencies()
+        logger.info("All dependencies satisfied")
     except DependencyMissingError as e:
+        logger.error(f"Missing dependencies: {e}")
         print_error(str(e))
         raise typer.Exit(1) from e
 
@@ -150,14 +167,17 @@ def fix(
         return
 
     # Get branch names for each PR
+    logger.info("Fetching branch names for PRs")
     print_info("\nFetching branch names for PRs...")
     pr_branches: dict[int, str] = {}
     for pr_num in pr_numbers:
         try:
             pr_info = github_service.get_pr_info(pr_num)
             pr_branches[pr_num] = pr_info.branch
+            logger.info(f"PR #{pr_num}: branch={pr_info.branch}")
             console.print(f"  PR #{pr_num}: {pr_info.branch}")
         except SmithersError as e:
+            logger.error(f"Failed to get info for PR #{pr_num}: {e}")
             print_error(f"Failed to get info for PR #{pr_num}: {e}")
             raise typer.Exit(1) from e
 
@@ -167,8 +187,10 @@ def fix(
     try:
         while True:
             iteration += 1
+            logger.info(f"Starting iteration {iteration}")
 
             if max_iterations > 0 and iteration > max_iterations:
+                logger.info(f"Reached max iterations ({max_iterations})")
                 console.print(f"\n[yellow]Reached max iterations ({max_iterations})[/yellow]")
                 break
 
@@ -189,23 +211,29 @@ def fix(
                 config=config,
             )
 
+            logger.info(f"Iteration {iteration} result: {result}")
+
             if result["all_done"]:
+                logger.info(f"All done! Completed in {iteration} iteration(s)")
                 print_header("ALL COMMENTS RESOLVED & CI PASSING!")
                 console.print(f"Completed in {iteration} iteration(s)")
                 break
 
             if result["comments_done_ci_failing"]:
+                logger.info("Comments resolved but CI still failing")
                 console.print("\n[yellow]Comments resolved but CI still failing[/yellow]")
                 console.print("Continuing to fix CI issues...")
                 time.sleep(10)
                 continue
 
+            logger.info(f"Iteration {iteration} complete, waiting 10s before next check")
             console.print(f"\nIteration {iteration} complete")
             console.print("Checking for new comments in 10 seconds...")
             time.sleep(10)
 
     finally:
         # Cleanup on exit
+        logger.info("Cleanup: removing worktrees and killing sessions")
         git_service.cleanup_all_worktrees()
         tmux_service.kill_all_smithers_sessions()
 
@@ -229,6 +257,7 @@ def _run_fix_iteration(
     Returns:
         Dict with status flags and counts
     """
+    logger.info(f"Running fix iteration: pr_numbers={pr_numbers}, todo_file={todo_file}")
     design_content = design_doc.read_text()
 
     # Create fix planning prompt
@@ -239,6 +268,7 @@ def _run_fix_iteration(
         todo_file_path=todo_file,
     )
 
+    logger.info("Running Claude Code to create fix plan")
     print_info("Running Claude Code to fetch PR comments and create fix plan...")
     result = claude_service.run_prompt(planning_prompt)
 
@@ -246,15 +276,18 @@ def _run_fix_iteration(
         console.print(result.output)
 
     if not result.success:
+        logger.warning(f"Claude Code failed during TODO creation: exit_code={result.exit_code}")
         console.print("[yellow]Claude Code failed during TODO creation. Retrying...[/yellow]")
         time.sleep(5)
         return {"all_done": False, "comments_done_ci_failing": False}
 
     if not todo_file.exists():
+        logger.warning(f"TODO file not created at {todo_file}")
         console.print(f"[yellow]TODO file not created at {todo_file}. Retrying...[/yellow]")
         time.sleep(5)
         return {"all_done": False, "comments_done_ci_failing": False}
 
+    logger.info(f"Fix plan created: {todo_file}")
     print_success(f"Review fix plan created: {todo_file}")
     todo_content = todo_file.read_text()
 
@@ -327,6 +360,7 @@ def _run_fix_iteration(
     tmux_service.wait_for_sessions(sessions, poll_interval=config.poll_interval)
 
     # Collect results
+    logger.info("Collecting results from all PRs")
     print_info("\nCollecting results from all PRs...")
 
     total_unresolved = 0
@@ -345,6 +379,7 @@ def _run_fix_iteration(
         if output_file.exists():
             output = output_file.read_text()
             combined_output += output
+            logger.debug(f"PR #{pr_num} output ({len(output)} chars)")
 
             if config.verbose:
                 print_header(f"OUTPUT FROM PR #{pr_num}")
@@ -358,6 +393,7 @@ def _run_fix_iteration(
 
             if json_output:
                 # Use JSON output
+                logger.debug(f"PR #{pr_num} JSON output: {json_output}")
                 if not json_output.get("done", False):
                     all_done = False
                 if json_output.get("ci_status") == "failing":
@@ -366,6 +402,7 @@ def _run_fix_iteration(
                 total_addressed += json_output.get("addressed", 0)
             else:
                 # Fallback to legacy regex format
+                logger.debug(f"PR #{pr_num}: Using legacy regex parsing")
                 if not re.search(rf"PR_{pr_num}_DONE:\s*true", output):
                     all_done = False
                 if re.search(rf"PR_{pr_num}_CI_STATUS:\s*failing", output):
@@ -379,6 +416,7 @@ def _run_fix_iteration(
                 if addressed_match:
                     total_addressed += int(addressed_match.group(1))
         else:
+            logger.warning(f"No output file found for PR #{pr_num}: {output_file}")
             console.print(f"[yellow]Warning: No output file found for PR #{pr_num}[/yellow]")
             all_done = False
 
@@ -391,6 +429,10 @@ def _run_fix_iteration(
         git_service.cleanup_worktree(branch)
 
     # Print summary
+    logger.info(
+        f"Iteration summary: unresolved={total_unresolved}, addressed={total_addressed}, "
+        f"ci_passing={all_ci_passing}, all_done={all_done}"
+    )
     console.print(f"\nTotal unresolved before: {total_unresolved}")
     console.print(f"Total addressed: {total_addressed}")
     console.print(f"All CI passing: {all_ci_passing}")

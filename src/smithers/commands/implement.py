@@ -12,8 +12,6 @@ from smithers.commands.quote import print_random_quote
 from smithers.console import console, print_error, print_header, print_info, print_success
 from smithers.exceptions import DependencyMissingError, SmithersError
 from smithers.logging_config import get_logger
-
-logger = get_logger("smithers.commands.implement")
 from smithers.models.config import Config, set_config
 from smithers.models.todo import TodoFile
 from smithers.prompts.implementation import render_implementation_prompt
@@ -21,6 +19,8 @@ from smithers.prompts.planning import render_planning_prompt
 from smithers.services.claude import ClaudeService
 from smithers.services.git import GitService
 from smithers.services.tmux import TmuxService
+
+logger = get_logger("smithers.commands.implement")
 
 if TYPE_CHECKING:
     from smithers.models.stage import Stage

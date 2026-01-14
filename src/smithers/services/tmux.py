@@ -89,7 +89,8 @@ class TmuxService:
         logger.debug(f"ensure_rejoinable_session called: session_name={session_name}")
         logger.debug(f"  argv={argv}")
         logger.debug(f"  SMITHERS_TMUX_WRAPPED={os.environ.get('SMITHERS_TMUX_WRAPPED')}")
-        logger.debug(f"  SMITHERS_DISABLE_TMUX_WRAPPER={os.environ.get('SMITHERS_DISABLE_TMUX_WRAPPER')}")
+        disable_wrapper = os.environ.get("SMITHERS_DISABLE_TMUX_WRAPPER")
+        logger.debug(f"  SMITHERS_DISABLE_TMUX_WRAPPER={disable_wrapper}")
         logger.debug(f"  TMUX={os.environ.get('TMUX')}")
         logger.debug(f"  stdin.isatty={sys.stdin.isatty()}, stdout.isatty={sys.stdout.isatty()}")
 
@@ -248,7 +249,9 @@ class TmuxService:
                 remaining = still_running
 
                 if remaining:
-                    logger.debug(f"Wait iteration {iteration}: {len(remaining)} sessions still running: {remaining}")
+                    logger.debug(
+                        f"Wait iteration {iteration}: {len(remaining)} sessions still running"
+                    )
                     shown = ", ".join(remaining[:3])
                     suffix = "..." if len(remaining) > 3 else ""
                     progress.update(

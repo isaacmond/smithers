@@ -11,8 +11,11 @@ import typer
 from smithers.commands.quote import print_random_quote
 from smithers.console import console, print_error, print_header, print_info, print_success
 from smithers.exceptions import DependencyMissingError, SmithersError
+from smithers.logging_config import get_logger
 from smithers.models.config import Config, set_config
 from smithers.services.claude import ClaudeService
+
+logger = get_logger("smithers.commands.plan")
 
 
 def plan(
@@ -41,6 +44,13 @@ def plan(
     """
     print_random_quote()
 
+    logger.info("=" * 60)
+    logger.info("Starting plan command")
+    logger.info(f"  output: {output}")
+    logger.info(f"  model: {model}")
+    logger.info(f"  verbose: {verbose}")
+    logger.info("=" * 60)
+
     # Set up configuration
     config = Config(
         model=model,
@@ -52,9 +62,12 @@ def plan(
     claude_service = ClaudeService(model=model)
 
     # Check dependencies
+    logger.info("Checking dependencies")
     try:
         claude_service.ensure_dependencies()
+        logger.info("All dependencies satisfied")
     except DependencyMissingError as e:
+        logger.error(f"Missing dependencies: {e}")
         print_error(str(e))
         console.print("\nInstall with:")
         console.print("  npm install -g @anthropic-ai/claude-code")
@@ -68,10 +81,12 @@ def plan(
     output_path = output or config.plans_dir / f"plan.smithers-{timestamp}.md"
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
+    logger.info(f"Output path: {output_path}")
     console.print(f"Plan will be saved to: [cyan]{output_path}[/cyan]")
 
     # The plan file Claude will create during the session
     claude_plan_file = Path.cwd() / ".claude" / "plan.md"
+    logger.debug(f"Claude plan file: {claude_plan_file}")
 
     print_info("\nLaunching Claude in plan mode...")
     print_info("Work with Claude to create your implementation plan.")
@@ -79,6 +94,7 @@ def plan(
 
     # Build the Claude command for interactive plan mode
     cmd = ["claude", "--model", model, "--plan"]
+    logger.info(f"Launching Claude: {' '.join(cmd)}")
 
     try:
         # Run Claude interactively (no capture, direct terminal access)
@@ -88,15 +104,20 @@ def plan(
             check=False,
         )
 
+        logger.info(f"Claude exited with code: {result.returncode}")
+
         if result.returncode not in {0, 130}:
             # 130 is SIGINT (Ctrl+C), which is a normal exit
+            logger.warning(f"Claude exited with unexpected code: {result.returncode}")
             console.print(f"[yellow]Claude exited with code {result.returncode}[/yellow]")
 
     except subprocess.SubprocessError as e:
+        logger.error(f"Failed to run Claude: {e}")
         raise SmithersError(f"Failed to run Claude: {e}") from e
 
     # Look for the plan file
     if not claude_plan_file.exists():
+        logger.error(f"No plan file found at {claude_plan_file}")
         print_error(f"No plan file found at {claude_plan_file}")
         console.print("\nMake sure Claude created a plan during the session.")
         console.print("You can also manually specify a plan file with --output.")
@@ -105,8 +126,10 @@ def plan(
     # Copy the plan file to the output location
     try:
         shutil.copy2(claude_plan_file, output_path)
+        logger.info(f"Plan saved to: {output_path}")
         print_success(f"\nPlan saved to: {output_path}")
         console.print("\nTo implement this plan, run:")
         console.print(f"  [cyan]smithers implement <design_doc> --todo-file {output_path}[/cyan]")
     except OSError as e:
+        logger.error(f"Failed to copy plan file: {e}")
         raise SmithersError(f"Failed to copy plan file: {e}") from e

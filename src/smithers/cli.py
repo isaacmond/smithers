@@ -5,13 +5,13 @@ from rich.console import Console
 
 from smithers import __version__
 from smithers.commands.fix import fix
-from smithers.logging_config import cleanup_old_logs, get_logger, setup_logging
 from smithers.commands.implement import implement
 from smithers.commands.plan import plan
 from smithers.commands.quote import quote
 from smithers.commands.rejoin import rejoin
 from smithers.commands.sessions import sessions
 from smithers.commands.update import update
+from smithers.logging_config import cleanup_old_logs, get_logger, setup_logging
 from smithers.services.version import check_for_updates
 
 # Create the Typer app
