@@ -24,6 +24,11 @@ class Config:
 
     # Paths
     temp_dir: Path = field(default_factory=lambda: Path("/tmp"))
+    plans_dir: Path = field(default_factory=lambda: Path.home() / ".wiggum" / "plans")
+
+    def __post_init__(self) -> None:
+        """Ensure plans directory exists."""
+        self.plans_dir.mkdir(parents=True, exist_ok=True)
 
     # Tracked state (mutable during execution)
     created_worktrees: list[str] = field(default_factory=list)

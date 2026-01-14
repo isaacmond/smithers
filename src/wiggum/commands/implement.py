@@ -91,9 +91,9 @@ def implement(
         console.print("  npm install -g @anthropic-ai/claude-code")
         raise typer.Exit(1) from e
 
-    # Create timestamped TODO file path
+    # Create timestamped TODO file path in ~/.wiggum/plans
     timestamp = datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
-    todo_file = design_doc.with_suffix(f".wiggum-{timestamp}.md")
+    todo_file = config.plans_dir / f"{design_doc.stem}.wiggum-{timestamp}.md"
 
     print_header("Wiggum: Implementing Design Document")
     console.print(f"Design doc: [cyan]{design_doc}[/cyan]")

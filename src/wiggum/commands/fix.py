@@ -163,9 +163,9 @@ def fix(
 
             print_header(f"ITERATION {iteration}")
 
-            # Create timestamped TODO file for this iteration
+            # Create timestamped TODO file for this iteration in ~/.wiggum/plans
             timestamp = datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
-            todo_file = design_doc.parent / f"{design_doc_base}.wiggum-{timestamp}.md"
+            todo_file = config.plans_dir / f"{design_doc_base}.wiggum-{timestamp}.md"
 
             result = _run_fix_iteration(
                 design_doc=design_doc,
