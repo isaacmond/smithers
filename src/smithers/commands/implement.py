@@ -19,7 +19,7 @@ from smithers.prompts.planning import render_planning_prompt
 from smithers.services.claude import ClaudeService
 from smithers.services.git import GitService
 from smithers.services.tmux import TmuxService
-from smithers.services.vibekanban import create_vibekanban_service
+from smithers.services.vibekanban import VibekanbanService, create_vibekanban_service
 
 logger = get_logger("smithers.commands.implement")
 
@@ -208,19 +208,9 @@ def implement(
         console.print("\n[yellow]DRY RUN MODE - No changes will be made[/yellow]")
         return
 
-    # Create vibekanban task for tracking
-    vk_task_id = vibekanban_service.create_task(
-        title=f"Implement: {design_doc.stem}",
-        description=f"Implementing design document: {design_doc}",
-    )
-    if vk_task_id:
-        vibekanban_service.update_task_status(vk_task_id, "in_progress")
-        logger.info(f"Created vibekanban task: {vk_task_id}")
-
     # Track collected PRs for fix mode transition
     collected_prs: list[int] = []
     design_content: str | None = None
-    implementation_success = False
 
     try:
         if user_supplied_todo:
@@ -237,6 +227,7 @@ def implement(
                 git_service=git_service,
                 tmux_service=tmux_service,
                 claude_service=claude_service,
+                vibekanban_service=vibekanban_service,
                 config=config,
                 resume=resume,
                 session_name=session_name,
@@ -262,16 +253,14 @@ def implement(
                 git_service=git_service,
                 tmux_service=tmux_service,
                 claude_service=claude_service,
+                vibekanban_service=vibekanban_service,
                 config=config,
                 resume=resume,
                 session_name=session_name,
             )
-        implementation_success = True
     except SmithersError as e:
         logger.error(f"SmithersError: {e}", exc_info=True)
         print_error(str(e))
-        if vk_task_id:
-            vibekanban_service.update_task_status(vk_task_id, "failed")
         raise typer.Exit(1) from e
     finally:
         # Cleanup worktrees on exit
@@ -283,10 +272,6 @@ def implement(
     print_header("Implementation Complete!")
     console.print(f"TODO file: [cyan]{todo_file_path}[/cyan]")
     console.print(f"PRs created: [green]{', '.join(f'#{pr}' for pr in collected_prs)}[/green]")
-
-    # Update vibekanban task status
-    if vk_task_id and implementation_success:
-        vibekanban_service.update_task_status(vk_task_id, "completed")
 
     # Transition to fix mode if we have PRs
     if collected_prs:
@@ -313,6 +298,7 @@ def _run_implementation_phase(
     git_service: GitService,
     tmux_service: TmuxService,
     claude_service: ClaudeService,
+    vibekanban_service: VibekanbanService,
     config: Config,
     resume: bool = False,
     session_name: str = "",
@@ -327,6 +313,7 @@ def _run_implementation_phase(
         git_service: Git service instance.
         tmux_service: Tmux service instance.
         claude_service: Claude service instance.
+        vibekanban_service: Vibekanban service for task tracking.
         config: Configuration instance.
         resume: If True, skip stages that are already completed.
         session_name: The smithers session name for PR tracking.
@@ -420,6 +407,15 @@ def _run_implementation_phase(
         )
         prompt_file.write_text(prompt)
 
+        # Create vibekanban task for this stage session
+        stage_vk_task_id = vibekanban_service.create_task(
+            title=f"[impl] Stage {stage.number}: {stage.title}",
+            description=f"Implementing {stage.branch} for {design_doc.name}",
+        )
+        if stage_vk_task_id:
+            vibekanban_service.update_task_status(stage_vk_task_id, "in_progress")
+            logger.info(f"Created vibekanban task for stage {stage.number}: {stage_vk_task_id}")
+
         # Launch Claude session (Claude will mark stage as in_progress)
         console.print(f"\nLaunching Claude session for Stage {stage.number}...")
 
@@ -462,7 +458,9 @@ def _run_implementation_phase(
                 collected_prs.append(pr_num)
                 logger.info(f"Stage {stage.number} complete: PR #{pr_num}")
                 print_success(f"Stage {stage.number} complete. PR #{pr_num}")
-                # Claude has already updated TODO file status to completed
+                # Update vibekanban task status to completed
+                if stage_vk_task_id:
+                    vibekanban_service.update_task_status(stage_vk_task_id, "completed")
             else:
                 msg = f"Could not extract PR number for Stage {stage.number}"
                 logger.warning(msg)
@@ -472,6 +470,9 @@ def _run_implementation_phase(
                     f"[yellow]Stage {stage.number} kept as in_progress - "
                     f"verify completion manually[/yellow]"
                 )
+                # Update vibekanban task status to failed
+                if stage_vk_task_id:
+                    vibekanban_service.update_task_status(stage_vk_task_id, "failed")
         else:
             logger.warning(f"No output file found for Stage {stage.number}: {output_file}")
             console.print(
@@ -482,6 +483,9 @@ def _run_implementation_phase(
                 f"[yellow]Stage {stage.number} kept as in_progress - "
                 f"verify completion manually[/yellow]"
             )
+            # Update vibekanban task status to failed
+            if stage_vk_task_id:
+                vibekanban_service.update_task_status(stage_vk_task_id, "failed")
 
         # Cleanup temp files
         for f in [prompt_file, output_file, exit_file]:

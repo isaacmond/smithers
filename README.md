@@ -278,14 +278,18 @@ export SMITHERS_VIBEKANBAN_ENABLED=false
 
 ### How It Works
 
-Smithers will automatically:
+Smithers creates a **separate vibekanban task for each Claude Code session**:
 
-1. **Create a task** in vibekanban when a command starts (implement, fix, plan, standardize)
-2. **Update task status** to "in_progress" while running
-3. **Mark as completed** when the command finishes successfully
-4. **Mark as failed** if the command fails
+- **Implement mode**: One task per stage (e.g., `[impl] Stage 1: Add models`)
+- **Fix mode**: One task per PR (e.g., `[fix] PR #123: feature-branch`)
 
-This allows you to monitor all your Claude sessions in the vibekanban UI.
+Each task is:
+1. **Created** when the Claude session starts
+2. **Set to "in_progress"** while running
+3. **Marked as "completed"** when the session succeeds
+4. **Marked as "failed"** if the session fails
+
+This allows you to monitor individual Claude sessions in real-time through the vibekanban UI.
 
 ### Requirements
 

@@ -19,7 +19,7 @@ from smithers.services.claude import ClaudeService
 from smithers.services.git import GitService
 from smithers.services.github import GitHubService
 from smithers.services.tmux import TmuxService
-from smithers.services.vibekanban import create_vibekanban_service
+from smithers.services.vibekanban import VibekanbanService, create_vibekanban_service
 
 logger = get_logger("smithers.commands.fix")
 
@@ -168,16 +168,6 @@ def fix(
         console.print("\n[yellow]DRY RUN MODE - No changes will be made[/yellow]")
         return
 
-    # Create vibekanban task for tracking
-    pr_list = ", ".join(f"#{pr}" for pr in pr_numbers)
-    vk_task_id = vibekanban_service.create_task(
-        title=f"Fix PRs: {pr_list}",
-        description=f"Fixing review comments and CI on: {pr_list}",
-    )
-    if vk_task_id:
-        vibekanban_service.update_task_status(vk_task_id, "inprogress")
-        logger.info(f"Created vibekanban task: {vk_task_id}")
-
     # Get branch names for each PR
     logger.info("Fetching branch names for PRs")
     print_info("\nFetching branch names for PRs...")
@@ -220,6 +210,7 @@ def fix(
                 git_service=git_service,
                 tmux_service=tmux_service,
                 claude_service=claude_service,
+                vibekanban_service=vibekanban_service,
                 config=config,
             )
 
@@ -229,8 +220,6 @@ def fix(
                 logger.info(f"All done! Completed in {iteration} iteration(s)")
                 print_header("ALL COMMENTS RESOLVED & CI PASSING!")
                 console.print(f"Completed in {iteration} iteration(s)")
-                if vk_task_id:
-                    vibekanban_service.update_task_status(vk_task_id, "done")
                 break
 
             if result["comments_done_ci_failing"]:
@@ -264,9 +253,21 @@ def _run_fix_iteration(
     git_service: GitService,
     tmux_service: TmuxService,
     claude_service: ClaudeService,
+    vibekanban_service: VibekanbanService,
     config: Config,
 ) -> dict[str, bool | int]:
     """Run a single fix iteration.
+
+    Args:
+        design_doc: Path to the design document.
+        todo_file: Path to the TODO file for this iteration.
+        pr_numbers: List of PR numbers to fix.
+        pr_branches: Mapping of PR numbers to branch names.
+        git_service: Git service instance.
+        tmux_service: Tmux service instance.
+        claude_service: Claude service instance.
+        vibekanban_service: Vibekanban service for task tracking.
+        config: Configuration instance.
 
     Returns:
         Dict with status flags and counts
@@ -342,6 +343,15 @@ def _run_fix_iteration(
         )
         prompt_file.write_text(prompt)
 
+        # Create vibekanban task for this PR fix session
+        pr_vk_task_id = vibekanban_service.create_task(
+            title=f"[fix] PR #{pr_num}: {branch}",
+            description=f"Fixing review comments on {branch}",
+        )
+        if pr_vk_task_id:
+            vibekanban_service.update_task_status(pr_vk_task_id, "in_progress")
+            logger.info(f"Created vibekanban task for PR #{pr_num}: {pr_vk_task_id}")
+
         group_data.append(
             {
                 "pr_number": pr_num,
@@ -350,6 +360,7 @@ def _run_fix_iteration(
                 "prompt_file": prompt_file,
                 "output_file": output_file,
                 "exit_file": exit_file,
+                "vk_task_id": pr_vk_task_id,
             }
         )
 
@@ -390,7 +401,9 @@ def _run_fix_iteration(
         prompt_file = Path(str(data["prompt_file"]))
         exit_file = Path(str(data["exit_file"]))
         branch = str(data["branch"])
+        vk_task_id = data.get("vk_task_id")
 
+        pr_done = False
         if output_file.exists():
             output = output_file.read_text()
             logger.debug(f"PR #{pr_num} output ({len(output)} chars)")
@@ -407,7 +420,8 @@ def _run_fix_iteration(
 
             if json_output:
                 logger.debug(f"PR #{pr_num} JSON output: {json_output}")
-                if not json_output.get("done", False):
+                pr_done = json_output.get("done", False)
+                if not pr_done:
                     all_done = False
                 if json_output.get("ci_status") == "failing":
                     all_ci_passing = False
@@ -424,6 +438,11 @@ def _run_fix_iteration(
             logger.warning(f"No output file found for PR #{pr_num}: {output_file}")
             console.print(f"[yellow]Warning: No output file found for PR #{pr_num}[/yellow]")
             all_done = False
+
+        # Update vibekanban task status
+        if vk_task_id:
+            status = "completed" if pr_done else "failed"
+            vibekanban_service.update_task_status(str(vk_task_id), status)
 
         # Cleanup temp files
         for f in [prompt_file, output_file, exit_file]:
