@@ -200,43 +200,145 @@ class ClaudeService:
         prompt_file: Path,
         output_file: Path,
         exit_file: Path,
+        stream_log_file: Path | None = None,
     ) -> str:
         """Create a shell command for running Claude in tmux.
 
         The command pipes the prompt file to Claude and captures output.
+        Uses streaming JSON output for real-time progress visibility.
 
         Args:
             prompt_file: Path to the file containing the prompt
-            output_file: Path where stdout/stderr will be written
+            output_file: Path where the final text output will be written
             exit_file: Path where exit code will be written
+            stream_log_file: Optional path for raw JSON stream log (for debugging)
 
         Returns:
             Shell command string for tmux
         """
-        cmd_parts = [
-            f"cat '{prompt_file}'",
-            "|",
+        # Build the claude command with streaming JSON output
+        claude_cmd_parts = [
             "claude",
             "--model",
             self.model,
             "--print",
+            "--output-format",
+            "stream-json",
+            "--verbose",
         ]
 
         if self.dangerously_skip_permissions:
-            cmd_parts.append("--dangerously-skip-permissions")
+            claude_cmd_parts.append("--dangerously-skip-permissions")
 
-        cmd_parts.extend(
-            [
-                f"> '{output_file}' 2>&1",
-                ";",
-                f"echo $? > '{exit_file}'",
-            ]
-        )
+        claude_cmd = " ".join(claude_cmd_parts)
 
-        command = " ".join(cmd_parts)
+        # If stream log file is provided, use tee to capture raw JSON stream
+        if stream_log_file:
+            # Pipe through tee to capture raw stream, then write to output file
+            command = (
+                f"cat '{prompt_file}' | {claude_cmd} "
+                f"| tee '{stream_log_file}' > '{output_file}' 2>&1 ; "
+                f"echo $? > '{exit_file}'"
+            )
+        else:
+            # Just write to output file
+            command = (
+                f"cat '{prompt_file}' | {claude_cmd} > '{output_file}' 2>&1 ; "
+                f"echo $? > '{exit_file}'"
+            )
+
         logger.debug(f"Created tmux command for Claude: {command}")
         logger.debug(f"  prompt_file: {prompt_file}")
         logger.debug(f"  output_file: {output_file}")
         logger.debug(f"  exit_file: {exit_file}")
+        if stream_log_file:
+            logger.debug(f"  stream_log_file: {stream_log_file}")
 
         return command
+
+    def parse_stream_json_output(self, output: str) -> str:
+        """Extract the final text result from stream-json output.
+
+        The stream-json format outputs one JSON object per line with types:
+        - {"type": "system", ...} - initialization info
+        - {"type": "assistant", "message": {...}} - assistant messages
+        - {"type": "result", "result": "...", ...} - final result
+
+        Args:
+            output: The raw stream-json output (multiple JSON lines)
+
+        Returns:
+            The extracted text result, or the original output if parsing fails
+        """
+        lines = output.strip().split("\n")
+
+        # Try to find the result line (usually the last one)
+        for raw_line in reversed(lines):
+            stripped = raw_line.strip()
+            if not stripped:
+                continue
+            try:
+                data = json.loads(stripped)
+                if data.get("type") == "result" and "result" in data:
+                    result = data["result"]
+                    logger.debug(f"Extracted result from stream-json ({len(result)} chars)")
+                    return result
+            except json.JSONDecodeError:
+                continue
+
+        # Fallback: try to extract from assistant messages
+        assistant_texts: list[str] = []
+        for raw_line in lines:
+            stripped = raw_line.strip()
+            if not stripped:
+                continue
+            try:
+                data = json.loads(stripped)
+                if data.get("type") == "assistant":
+                    message = data.get("message", {})
+                    content = message.get("content", [])
+                    for block in content:
+                        if isinstance(block, dict) and block.get("type") == "text":
+                            assistant_texts.append(block.get("text", ""))
+            except json.JSONDecodeError:
+                continue
+
+        if assistant_texts:
+            result = "\n".join(assistant_texts)
+            logger.debug(f"Extracted text from assistant messages ({len(result)} chars)")
+            return result
+
+        # Final fallback: return original output
+        logger.warning("Could not parse stream-json output, returning raw output")
+        return output
+
+    def get_stream_stats(self, output: str) -> dict[str, Any]:
+        """Extract statistics from stream-json output.
+
+        Args:
+            output: The raw stream-json output
+
+        Returns:
+            Dictionary with stats like cost, tokens, duration, etc.
+        """
+        stats: dict[str, Any] = {}
+        lines = output.strip().split("\n")
+
+        for raw_line in reversed(lines):
+            stripped = raw_line.strip()
+            if not stripped:
+                continue
+            try:
+                data = json.loads(stripped)
+                if data.get("type") == "result":
+                    stats["duration_ms"] = data.get("duration_ms")
+                    stats["duration_api_ms"] = data.get("duration_api_ms")
+                    stats["num_turns"] = data.get("num_turns")
+                    stats["total_cost_usd"] = data.get("total_cost_usd")
+                    stats["is_error"] = data.get("is_error", False)
+                    stats["usage"] = data.get("usage")
+                    break
+            except json.JSONDecodeError:
+                continue
+
+        return stats

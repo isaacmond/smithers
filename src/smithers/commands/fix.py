@@ -330,11 +330,12 @@ def _run_fix_iteration(
                 console.print(f"[red]Could not create worktree for PR #{pr_num}: {e}[/red]")
                 continue
 
-        # Create prompt file
+        # Create prompt file and output files
         timestamp = datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
         prompt_file = config.temp_dir / f"smithers-fix-pr-{pr_num}-{timestamp}.prompt"
         output_file = prompt_file.with_suffix(".prompt.output")
         exit_file = prompt_file.with_suffix(".prompt.exit")
+        stream_log_file = prompt_file.with_suffix(".prompt.stream.log")
 
         # Generate fix prompt
         prompt = render_fix_prompt(
@@ -373,6 +374,7 @@ def _run_fix_iteration(
                 "prompt_file": prompt_file,
                 "output_file": output_file,
                 "exit_file": exit_file,
+                "stream_log_file": stream_log_file,
                 "vk_task_id": pr_vk_task_id,
             }
         )
@@ -384,6 +386,7 @@ def _run_fix_iteration(
             prompt_file=Path(str(data["prompt_file"])),
             output_file=Path(str(data["output_file"])),
             exit_file=Path(str(data["exit_file"])),
+            stream_log_file=Path(str(data["stream_log_file"])),
         )
 
         session = tmux_service.create_session(
@@ -413,13 +416,24 @@ def _run_fix_iteration(
         output_file = Path(str(data["output_file"]))
         prompt_file = Path(str(data["prompt_file"]))
         exit_file = Path(str(data["exit_file"]))
+        stream_log_file = Path(str(data["stream_log_file"]))
         branch = str(data["branch"])
         vk_task_id = data.get("vk_task_id")
 
         pr_done = False
         if output_file.exists():
-            output = output_file.read_text()
+            raw_output = output_file.read_text()
+            # Parse the streaming JSON output to extract the actual text result
+            output = claude_service.parse_stream_json_output(raw_output)
             logger.debug(f"PR #{pr_num} output ({len(output)} chars)")
+
+            # Log stream stats for debugging
+            stats = claude_service.get_stream_stats(raw_output)
+            if stats:
+                logger.info(
+                    f"PR #{pr_num} stats: duration={stats.get('duration_ms')}ms, "
+                    f"cost=${stats.get('total_cost_usd', 0):.4f}"
+                )
 
             if config.verbose:
                 print_header(f"OUTPUT FROM PR #{pr_num}")
@@ -457,10 +471,15 @@ def _run_fix_iteration(
             status = "completed" if pr_done else "failed"
             vibekanban_service.update_task_status(str(vk_task_id), status)
 
-        # Cleanup temp files
-        for f in [prompt_file, output_file, exit_file]:
+        # Cleanup temp files (keep stream log for debugging if verbose)
+        files_to_clean = [prompt_file, output_file, exit_file]
+        if not config.verbose:
+            files_to_clean.append(stream_log_file)
+        for f in files_to_clean:
             if f.exists():
                 f.unlink()
+        if config.verbose and stream_log_file.exists():
+            logger.info(f"Stream log preserved at: {stream_log_file}")
 
         # Cleanup worktree
         git_service.cleanup_worktree(branch)
