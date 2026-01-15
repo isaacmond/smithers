@@ -849,3 +849,42 @@ class TmuxService:
         if session.startswith("smithers-fix-"):
             return "fix"
         return None
+
+    @staticmethod
+    def get_session_design_doc_stem(session: str) -> str | None:
+        """Extract the design doc stem from a session name.
+
+        Args:
+            session: The session name
+
+        Returns:
+            The design doc stem (e.g., "notes" from "smithers-impl-notes"),
+            or None if not an implement session
+        """
+        if session.startswith("smithers-impl-"):
+            return session[len("smithers-impl-") :]
+        return None
+
+    def get_session_plan_files(self, session: str) -> list[Path]:
+        """Get plan files associated with a session.
+
+        Plan files are stored in ~/.smithers/plans/ with names like:
+        {design_doc_stem}.smithers-{timestamp}.md
+
+        Args:
+            session: The session name
+
+        Returns:
+            List of plan file paths matching this session
+        """
+        stem = self.get_session_design_doc_stem(session)
+        if not stem:
+            return []
+
+        plans_dir = Path.home() / ".smithers" / "plans"
+        if not plans_dir.exists():
+            return []
+
+        # Find all plan files matching this design doc stem
+        pattern = f"{stem}.smithers-*.md"
+        return sorted(plans_dir.glob(pattern))

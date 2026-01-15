@@ -1,5 +1,6 @@
 """Kill command - terminate running smithers tmux sessions."""
 
+from pathlib import Path
 from typing import Annotated
 
 import typer
@@ -84,10 +85,11 @@ def kill(
     tracked_prs: list[int] = []
     if session_mode == "implement":
         tracked_prs = tmux_service.get_session_prs(target_session)
+    plan_files = tmux_service.get_session_plan_files(target_session)
 
     # Confirm before killing (unless --force)
     if not force:
-        _show_cleanup_info(target_session, session_mode, tracked_worktrees, tracked_prs)
+        _show_cleanup_info(target_session, session_mode, tracked_worktrees, tracked_prs, plan_files)
 
         confirm = typer.confirm(f"\nKill session '{target_session}'?")
         if not confirm:
@@ -101,6 +103,7 @@ def kill(
         session_mode=session_mode,
         tracked_worktrees=tracked_worktrees,
         tracked_prs=tracked_prs,
+        plan_files=plan_files,
     )
     print_info(f"Session '{target_session}' has been killed.")
 
@@ -110,6 +113,7 @@ def _show_cleanup_info(
     session_mode: str | None,
     tracked_worktrees: list[str],
     tracked_prs: list[int],
+    plan_files: list[Path],
 ) -> None:
     """Show what will be cleaned up when killing a session."""
     console.print(f"\n[cyan]Session:[/cyan] {session_name}")
@@ -128,6 +132,11 @@ def _show_cleanup_info(
         for pr in tracked_prs:
             console.print(f"  • PR #{pr}")
 
+    if plan_files:
+        console.print(f"\n[yellow]Will delete {len(plan_files)} plan file(s):[/yellow]")
+        for pf in plan_files:
+            console.print(f"  • {pf.name}")
+
 
 def _kill_session_with_cleanup(
     tmux_service: TmuxService,
@@ -135,6 +144,7 @@ def _kill_session_with_cleanup(
     session_mode: str | None,
     tracked_worktrees: list[str],
     tracked_prs: list[int],
+    plan_files: list[Path] | None = None,
 ) -> None:
     """Kill a session and clean up all associated resources.
 
@@ -144,6 +154,7 @@ def _kill_session_with_cleanup(
         session_mode: The session mode ("implement", "fix", or None)
         tracked_worktrees: List of worktree branches to clean up
         tracked_prs: List of PR numbers to close (for implement mode only)
+        plan_files: List of plan file paths to delete
     """
     # Kill the tmux session (stops Claude Code)
     tmux_service.kill_session(session_name)
@@ -183,6 +194,16 @@ def _kill_session_with_cleanup(
             except Exception as e:
                 print_warning(f"Failed to remove worktree {branch}: {e}")
 
+    # Clean up plan files
+    if plan_files:
+        console.print("\n[dim]Cleaning up plan files...[/dim]")
+        for plan_file in plan_files:
+            try:
+                plan_file.unlink()
+                console.print(f"  [red]✗[/red] Deleted plan: {plan_file.name}")
+            except Exception as e:
+                print_warning(f"Failed to delete plan file {plan_file.name}: {e}")
+
 
 def _kill_all_sessions(tmux_service: TmuxService, force: bool) -> None:
     """Kill all running smithers sessions."""
@@ -200,11 +221,13 @@ def _kill_all_sessions(tmux_service: TmuxService, force: bool) -> None:
         mode = TmuxService.get_session_mode(session.name)
         worktrees = tmux_service.get_session_worktrees(session.name)
         prs = tmux_service.get_session_prs(session.name) if mode == "implement" else []
+        plan_files = tmux_service.get_session_plan_files(session.name)
 
         session_info[session.name] = {
             "mode": mode,
             "worktrees": worktrees,
             "prs": prs,
+            "plan_files": plan_files,
             "attached": session.attached,
         }
 
@@ -212,7 +235,10 @@ def _kill_all_sessions(tmux_service: TmuxService, force: bool) -> None:
         mode_str = f" [{mode}]" if mode else ""
         wt_info = f" ({len(worktrees)} worktree(s))" if worktrees else ""
         pr_info = f" ({len(prs)} PR(s))" if prs else ""
-        console.print(f"  • [cyan]{session.name}[/cyan]{mode_str}{attached}{wt_info}{pr_info}")
+        plan_info = f" ({len(plan_files)} plan(s))" if plan_files else ""
+        console.print(
+            f"  • [cyan]{session.name}[/cyan]{mode_str}{attached}{wt_info}{pr_info}{plan_info}"
+        )
 
     # Confirm before killing (unless --force)
     if not force:
@@ -230,6 +256,7 @@ def _kill_all_sessions(tmux_service: TmuxService, force: bool) -> None:
             session_mode=str(info["mode"]) if info["mode"] else None,
             tracked_worktrees=list(info["worktrees"]),  # type: ignore[arg-type]
             tracked_prs=list(info["prs"]),  # type: ignore[arg-type]
+            plan_files=list(info["plan_files"]),  # type: ignore[arg-type]
         )
         console.print(f"  [red]✗[/red] Killed [cyan]{session.name}[/cyan]")
 

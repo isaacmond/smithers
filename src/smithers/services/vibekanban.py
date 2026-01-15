@@ -21,6 +21,29 @@ logger = get_logger("smithers.services.vibekanban")
 # Path where vibe-kanban stores its port file
 VIBE_KANBAN_PORT_FILE = Path(tempfile.gettempdir()) / "vibe-kanban" / "vibe-kanban.port"
 
+# Mapping from smithers status values to vibe-kanban status values
+# vibe-kanban expects: "todo" | "inprogress" | "inreview" | "done" | "cancelled"
+# smithers uses: "todo", "in_progress", "completed", "failed"
+SMITHERS_TO_VK_STATUS: dict[str, str] = {
+    "todo": "todo",
+    "in_progress": "inprogress",
+    "completed": "done",
+    "failed": "cancelled",
+}
+
+# Reverse mapping for querying tasks
+VK_TO_SMITHERS_STATUS: dict[str, str] = {v: k for k, v in SMITHERS_TO_VK_STATUS.items()}
+
+
+def _to_vk_status(smithers_status: str) -> str:
+    """Convert smithers status to vibe-kanban status."""
+    return SMITHERS_TO_VK_STATUS.get(smithers_status, smithers_status)
+
+
+def _to_smithers_status(vk_status: str) -> str:
+    """Convert vibe-kanban status to smithers status."""
+    return VK_TO_SMITHERS_STATUS.get(vk_status, vk_status)
+
 
 @dataclass
 class VibekanbanService:
@@ -130,7 +153,8 @@ class VibekanbanService:
 
         Args:
             task_id: The task ID
-            status: New status (e.g., "in_progress", "completed", "failed")
+            status: New status using smithers names ("in_progress", "completed", "failed").
+                   Converted to vibe-kanban format ("inprogress", "done", "cancelled").
             title: New task title
             description: New task description
 
@@ -143,7 +167,9 @@ class VibekanbanService:
         try:
             arguments: dict[str, Any] = {"task_id": task_id}
             if status is not None:
-                arguments["status"] = status
+                # Convert smithers status to vibe-kanban status
+                vk_status = _to_vk_status(status)
+                arguments["status"] = vk_status
             if title is not None:
                 arguments["title"] = title
             if description is not None:
@@ -173,7 +199,8 @@ class VibekanbanService:
 
         Args:
             task_id: The task ID
-            status: New status (e.g., "in_progress", "completed", "failed")
+            status: New status using smithers names ("in_progress", "completed", "failed").
+                   Automatically converted to vibe-kanban format.
 
         Returns:
             True if successful, False otherwise.
@@ -205,7 +232,7 @@ class VibekanbanService:
         """List tasks in the project.
 
         Args:
-            status: Status filter (e.g., "in_progress", "todo")
+            status: Status filter (e.g., "in_progress", "todo") - uses smithers status names
 
         Returns:
             List of task dicts, or empty list on failure.
@@ -214,7 +241,9 @@ class VibekanbanService:
             return []
 
         try:
-            args: dict[str, str] = {"project_id": str(self.project_id), "status": status}
+            # Convert smithers status to vibe-kanban status for the query
+            vk_status = _to_vk_status(status)
+            args: dict[str, str] = {"project_id": str(self.project_id), "status": vk_status}
             result = asyncio.run(self._call_tool("list_tasks", args))
             tasks = result.get("tasks", [])
             if isinstance(tasks, list):

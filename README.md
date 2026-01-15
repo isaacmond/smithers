@@ -117,6 +117,7 @@ Delete all smithers-created vibekanban tasks.
 
 ```bash
 smithers cleanup           # Delete all [impl] and [fix] tasks
+smithers cleanup megarepo  # Clean up the megarepo project
 smithers cleanup --force   # Skip confirmation prompt
 ```
 
@@ -138,7 +139,10 @@ smithers kill                  # Kill most recent session
 smithers kill --all            # Kill all sessions
 ```
 
-When you kill a session, smithers cleans up worktrees and (for implement sessions) closes PRs and deletes remote branches.
+When you kill a session, smithers cleans up:
+- Git worktrees created by the session
+- Plan files associated with the session (so a new execution creates a fresh plan)
+- For implement sessions: closes PRs and deletes remote branches
 
 ### Monitoring Progress
 
@@ -218,7 +222,8 @@ Includes robust error handling that logs exceptions during parallel session exec
 Smithers integrates with [Vibekanban](https://vibekanban.com/) to track Claude sessions as kanban tasks. Enabled by default with zero configuration.
 
 ```bash
-smithers projects  # List available vibekanban projects
+smithers projects           # List available projects (shows active)
+smithers projects megarepo  # Set megarepo as active project
 ```
 
 See [docs/vibekanban.md](docs/vibekanban.md) for configuration options.

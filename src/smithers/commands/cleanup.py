@@ -9,6 +9,10 @@ from smithers.services.vibekanban import VibekanbanService, get_vibekanban_url
 
 
 def cleanup(
+    project: str | None = typer.Argument(
+        None,
+        help="Project name to clean up (partial match supported)",
+    ),
     force: Annotated[
         bool,
         typer.Option("--force", "-f", help="Skip confirmation prompt"),
@@ -18,6 +22,10 @@ def cleanup(
 
     Finds and deletes all tasks with [impl] or [fix] prefixes across
     all statuses (todo, in_progress, completed, failed).
+
+    Examples:
+        smithers cleanup           # Clean up configured/auto-discovered project
+        smithers cleanup megarepo  # Clean up the megarepo project
     """
     print_header("Vibekanban Cleanup")
 
@@ -27,8 +35,14 @@ def cleanup(
 
     service = VibekanbanService(enabled=True)
 
-    # Auto-discover project if not configured
-    if not service.project_id:
+    # If a project name was provided, look it up
+    if project:
+        project_id = _resolve_project_by_name(project, service)
+        if not project_id:
+            raise typer.Exit(1)
+        service.project_id = project_id
+    # Otherwise, auto-discover project if not configured
+    elif not service.project_id:
         from smithers.services.vibekanban import _auto_discover_project_id
 
         service.project_id = _auto_discover_project_id()
@@ -96,3 +110,43 @@ def cleanup(
         print_success(f"Deleted {deleted} task(s).")
     if failed > 0:
         print_error(f"Failed to delete {failed} task(s).")
+
+
+def _resolve_project_by_name(name: str, service: VibekanbanService) -> str | None:
+    """Resolve a project name to its ID.
+
+    Returns the project ID if found, None if not found or ambiguous.
+    """
+    project_list = service.list_projects()
+
+    if not project_list:
+        print_error("No projects found or vibekanban unavailable.")
+        return None
+
+    # Find matching projects (case-insensitive partial match)
+    name_lower = name.lower()
+    matches = [p for p in project_list if name_lower in p.get("name", "").lower()]
+
+    if not matches:
+        print_error(f"No project found matching '{name}'")
+        console.print("\n[dim]Available projects:[/dim]")
+        for p in project_list:
+            console.print(f"  • {p.get('name', 'Unnamed')}")
+        return None
+
+    if len(matches) > 1:
+        # Check for exact match first
+        exact = [p for p in matches if p.get("name", "").lower() == name_lower]
+        if len(exact) == 1:
+            matches = exact
+        else:
+            console.print(f"[yellow]Multiple projects match '{name}':[/yellow]\n")
+            for p in matches:
+                console.print(f"  • {p.get('name', 'Unnamed')}")
+            console.print("\n[dim]Please be more specific.[/dim]")
+            return None
+
+    project = matches[0]
+    project_name = project.get("name", "Unnamed")
+    console.print(f"Project: [cyan]{project_name}[/cyan]\n")
+    return project.get("id")
