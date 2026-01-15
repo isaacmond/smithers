@@ -1,8 +1,7 @@
 """Logging configuration for Smithers CLI."""
 
-from __future__ import annotations
-
 import logging
+import os
 import sys
 import uuid
 from datetime import UTC, datetime
@@ -22,6 +21,23 @@ _initialized: bool = False
 # Log format
 LOG_FORMAT = "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
 LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+
+def _will_reexec_in_tmux() -> bool:
+    """Check if we're in the outer process that will re-exec into tmux.
+
+    Returns True if we're NOT inside tmux wrapper, NOT in tmux, but ARE in a TTY.
+    This means commands like fix/implement will re-exec themselves via tmux.
+    We skip creating per-session log files in this case to avoid duplicate logs.
+    """
+    if os.environ.get("SMITHERS_TMUX_WRAPPED") == "1":
+        return False  # Already wrapped, won't re-exec
+    if os.environ.get("SMITHERS_DISABLE_TMUX_WRAPPER") == "1":
+        return False  # Wrapper disabled, won't re-exec
+    if os.environ.get("TMUX"):
+        return False  # Already in tmux, won't re-exec
+    # Will re-exec into tmux only if both stdin and stdout are TTY
+    return sys.stdin.isatty() and sys.stdout.isatty()
 
 
 def get_log_dir() -> Path:
@@ -73,12 +89,20 @@ def setup_logging(config: Config | None = None) -> None:
     # Clear existing handlers to avoid duplicates
     root_logger.handlers.clear()
 
+    # Check if we're in the outer process that will re-exec into tmux.
+    # If so, skip creating per-session log file to avoid duplicate logs.
+    # The inner (re-exec'd) process will create the actual session log.
+    will_reexec = _will_reexec_in_tmux()
+
     # 1. Session-specific file handler (captures everything for this run)
-    session_file = get_session_log_file()
-    session_handler = logging.FileHandler(session_file, encoding="utf-8")
-    session_handler.setLevel(log_level)
-    session_handler.setFormatter(logging.Formatter(LOG_FORMAT, LOG_DATE_FORMAT))
-    root_logger.addHandler(session_handler)
+    # Only create if we won't re-exec (otherwise we'd create duplicate logs)
+    session_file: Path | None = None
+    if not will_reexec:
+        session_file = get_session_log_file()
+        session_handler = logging.FileHandler(session_file, encoding="utf-8")
+        session_handler.setLevel(log_level)
+        session_handler.setFormatter(logging.Formatter(LOG_FORMAT, LOG_DATE_FORMAT))
+        root_logger.addHandler(session_handler)
 
     # 2. Rotating file handler for combined log (historical analysis)
     combined_log = get_log_dir() / "smithers.log"
@@ -97,7 +121,10 @@ def setup_logging(config: Config | None = None) -> None:
     # Log session start
     root_logger.info("=" * 60)
     root_logger.info(f"Smithers session started: {get_session_id()}")
-    root_logger.info(f"Session log file: {session_file}")
+    if session_file:
+        root_logger.info(f"Session log file: {session_file}")
+    else:
+        root_logger.info("Session log file: (deferred to tmux wrapper)")
     root_logger.info(f"Python: {sys.version.split()[0]}")
     root_logger.info(f"Working directory: {Path.cwd()}")
     root_logger.info("=" * 60)

@@ -5,70 +5,38 @@
 - **NEVER** use `from __future__ import annotations` or any other `__future__` imports
 - **ALWAYS** put all imports at module level (top of file) — no inline or local imports inside functions
 
+## Required Checks
+
+All checks must pass before pushing to `main`:
+
+```bash
+uv run ty check src/
+uv run ruff check src/
+uv run pytest tests/
+```
+
 ## Shipping Code
 
-**ALWAYS** ship code directly to `main` after completing a feature or fix. Once all checks pass, bump the version and push immediately:
+Ship directly to `main` — no PRs required when checks pass:
 
-1. **Run all checks**:
-   ```bash
-   uv run ty check src/
-   uv run ruff check src/
-   uv run pytest tests/
-   ```
-
-2. **Update README.md** with the latest functionality and features.
-
-3. **If all checks pass**, bump the version and release (see "Releasing a New Version" below)
-
-4. **Push directly to `main`** — no PRs required when checks pass
-
-## Before Merging to `main`
-
-**ALWAYS** verify the following checks pass before merging any changes into `main`:
-
-1. **Type checking**
-   ```bash
-   uv run ty check src/
-   ```
-
-2. **Linting**
-   ```bash
-   uv run ruff check src/
-   ```
-
-3. **Tests**
-   ```bash
-   uv run pytest tests/
-   ```
-
-All three checks must pass with no errors before any PR can be merged.
+1. Run all checks (above)
+2. Update README.md with new functionality
+3. Bump version and release (below)
+4. Push to `main`
 
 ## Releasing a New Version
 
-To release a new version of smithers:
+1. **Update version** in both `pyproject.toml` and `src/smithers/__init__.py` (must match)
 
-1. **Update version in both locations** (they must match):
-   - `pyproject.toml`: Update the `version` field
-   - `src/smithers/__init__.py`: Update `__version__`
-
-2. **Run all checks**:
-   ```bash
-   uv run ty check src/
-   uv run ruff check src/
-   uv run pytest tests/
-   ```
-
-3. **Commit the version bump** (uv.lock is auto-updated by running checks):
+2. **Run all checks**, then commit:
    ```bash
    git add pyproject.toml src/smithers/__init__.py uv.lock
    git commit -m "Bump version to X.Y.Z"
    ```
 
-4. **Create and push a git tag**:
+3. **Tag and push**:
    ```bash
    git tag X.Y.Z
    git push origin main
    git push origin X.Y.Z
    ```
-
-The version check feature will use these tags to notify users of available updates.

@@ -93,7 +93,7 @@ def plan(
     print_info("When finished, exit Claude (Ctrl+C or /exit).\n")
 
     # Build the Claude command for interactive plan mode
-    cmd = ["claude", "--model", model, "--plan"]
+    cmd = ["claude", "--model", model, "--permission-mode", "plan"]
     logger.info(f"Launching Claude: {' '.join(cmd)}")
 
     try:

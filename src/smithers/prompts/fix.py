@@ -119,9 +119,26 @@ Location: {todo_file_path}
 {todo_content}
 
 ## Your Task
-Address all issues for PR #{pr_number}:
+Address all issues for PR #{pr_number}.
 
-### 1. Check CI/CD Status FIRST (HIGHEST PRIORITY)
+**CRITICAL**: You MUST complete ALL steps below, even if there are 0 comments to address.
+The fix process is not complete until:
+1. Base branch is merged in (origin/main)
+2. All merge conflicts are resolved
+3. All CI/CD checks pass
+4. All unresolved comments are addressed (if any)
+
+### 1. Update Branch FIRST (ALWAYS REQUIRED - EVEN WITH 0 COMMENTS)
+- You are already on branch '{branch}' in a worktree
+- Fetch latest: git fetch origin
+- Pull latest changes: git pull origin {branch}
+- **ALWAYS merge origin/main**: git merge origin/main
+- **IMMEDIATELY RESOLVE ALL MERGE CONFLICTS** if any occur
+- After resolving, run bin/run_lint.sh and bin/run_type_check.sh to verify
+- Commit and push merge resolution if needed
+- **This step is MANDATORY even if there are no review comments**
+
+### 2. Check CI/CD Status (HIGHEST PRIORITY)
 - Use: gh pr checks {pr_number}
 - If ANY checks are failing:
   - Get the run ID: gh run list --branch {branch} --limit 1
@@ -129,25 +146,8 @@ Address all issues for PR #{pr_number}:
   - Identify the EXACT errors (test failures, lint errors, type errors)
   - These MUST be fixed before anything else
 
-### 2. Fetch PR Details and Comments
-- Use gh CLI to get PR info, review threads (with resolution status), and general comments
-- Use GraphQL API to check which review threads are resolved vs unresolved
-
-### 3. Identify Unresolved Comments
-Skip comments that:
-- Are in a resolved thread (isResolved == true)
-- Contain [RESOLVED] in the body
-- Start with [CLAUDE] (already handled by you)
-
-### 4. Update Branch (MERGE CONFLICTS ARE BLOCKING)
-- You are already on branch '{branch}' in a worktree
-- Pull latest changes: git pull origin {branch}
-- Merge origin/main to stay up to date: git merge origin/main
-- **IMMEDIATELY RESOLVE ALL MERGE CONFLICTS** before proceeding
-- After resolving, run bin/run_lint.sh and bin/run_type_check.sh to verify
-
-### 5. Fix ALL CI/CD Failures (before addressing comments)
-If CI is failing, you MUST fix it first:
+### 3. Fix ALL CI/CD Failures
+If CI is failing, you MUST fix it:
 - Read the error messages carefully from the TODO file or fetch fresh logs
 - Fix test failures by correcting the code or updating tests
 - Fix lint errors by reformatting or fixing style issues
@@ -156,7 +156,17 @@ If CI is failing, you MUST fix it first:
 - Commit and push the fixes
 - Verify CI passes before moving to review comments
 
-### 6. Address EVERY Unresolved Comment
+### 4. Fetch PR Details and Comments
+- Use gh CLI to get PR info, review threads (with resolution status), and general comments
+- Use GraphQL API to check which review threads are resolved vs unresolved
+
+### 5. Identify Unresolved Comments
+Skip comments that:
+- Are in a resolved thread (isResolved == true)
+- Contain [RESOLVED] in the body
+- Start with [CLAUDE] (already handled by you)
+
+### 6. Address EVERY Unresolved Comment (if any exist)
 You MUST reply to EVERY single unresolved comment. No exceptions.
 
 For each comment:
@@ -172,6 +182,7 @@ For each comment:
 
 ### 8. Resolve Threads When Appropriate
 Use the GitHub GraphQL API to resolve review threads after addressing them.
+
 ### 9. Self-review and cleanup (if available in your environment)
 - Run `/code-review:code-review` to review your changes and apply actionable feedback
 - Run `/de-slopify` to remove AI-generated slop from the branch before finalizing
@@ -191,13 +202,20 @@ After processing PR #{pr_number}, output the following JSON block at the END of 
 ---JSON_OUTPUT---
 {{
   "pr_number": {pr_number},
-  "merge_conflicts": "<none|resolved>",
-  "unresolved_before": <count>,
-  "addressed": <count>,
+  "base_branch_merged": <true if origin/main was merged successfully, false otherwise>,
+  "merge_conflicts": "<none|resolved|unresolved>",
+  "unresolved_before": <count of unresolved comments before processing>,
+  "addressed": <count of comments addressed>,
   "ci_status": "<passing|failing|pending>",
-  "done": <true if NO unresolved comments AND CI passing, false otherwise>
+  "done": <true ONLY if: base_branch_merged=true AND merge_conflicts!="unresolved" AND unresolved_before=0 AND ci_status="passing">
 }}
 ---END_JSON---
+
+**IMPORTANT**: `done` can ONLY be true if ALL of the following are satisfied:
+- Base branch (origin/main) has been merged into this branch
+- There are NO unresolved merge conflicts
+- There are ZERO unresolved comments (`unresolved_before` after your processing should be 0)
+- CI status is "passing"
 
 ## Begin
 Process PR #{pr_number} now."""
