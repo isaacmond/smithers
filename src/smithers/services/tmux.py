@@ -446,7 +446,7 @@ class TmuxService:
         tail_proc.terminate()
         tail_proc.wait()
 
-    def _read_exit_code(self, exit_code_file: Path, max_wait: float = 0.5) -> int:
+    def _read_exit_code(self, exit_code_file: Path, max_wait: float = 5.0) -> int:
         """Read the exit code from the marker file.
 
         Args:
