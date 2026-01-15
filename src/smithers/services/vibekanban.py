@@ -225,6 +225,24 @@ def _is_vibekanban_running() -> bool:
         return False
 
 
+def get_vibekanban_url() -> str | None:
+    """Get the vibekanban web UI URL if running.
+
+    Returns:
+        URL string (e.g., "http://127.0.0.1:3000") if running, None otherwise.
+    """
+    if not VIBE_KANBAN_PORT_FILE.exists():
+        return None
+
+    try:
+        port = VIBE_KANBAN_PORT_FILE.read_text().strip()
+        if port:
+            return f"http://127.0.0.1:{port}"
+    except Exception:
+        pass
+    return None
+
+
 def _launch_vibekanban() -> bool:
     """Launch vibe-kanban in the background if not running.
 

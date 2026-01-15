@@ -1,7 +1,7 @@
 """Projects command - list vibekanban projects."""
 
 from smithers.console import console, print_header
-from smithers.services.vibekanban import VibekanbanService
+from smithers.services.vibekanban import VibekanbanService, get_vibekanban_url
 
 
 def projects() -> None:
@@ -10,6 +10,10 @@ def projects() -> None:
     Shows available projects and their IDs for configuration.
     """
     print_header("Vibekanban Projects")
+
+    vibekanban_url = get_vibekanban_url()
+    if vibekanban_url:
+        console.print(f"URL: [cyan]{vibekanban_url}[/cyan]\n")
 
     service = VibekanbanService(enabled=True)
     project_list = service.list_projects()

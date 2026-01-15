@@ -19,7 +19,11 @@ from smithers.prompts.planning import render_planning_prompt
 from smithers.services.claude import ClaudeService
 from smithers.services.git import GitService
 from smithers.services.tmux import TmuxService
-from smithers.services.vibekanban import VibekanbanService, create_vibekanban_service
+from smithers.services.vibekanban import (
+    VibekanbanService,
+    create_vibekanban_service,
+    get_vibekanban_url,
+)
 
 logger = get_logger("smithers.commands.implement")
 
@@ -203,6 +207,9 @@ def implement(
     console.print(f"Base branch: [cyan]{base_branch}[/cyan]")
     console.print(f"Branch prefix: [cyan]{branch_prefix}[/cyan]")
     console.print(f"Model: [cyan]{model}[/cyan]")
+    vibekanban_url = get_vibekanban_url()
+    if vibekanban_url:
+        console.print(f"Vibekanban: [cyan]{vibekanban_url}[/cyan]")
 
     if dry_run:
         console.print("\n[yellow]DRY RUN MODE - No changes will be made[/yellow]")
