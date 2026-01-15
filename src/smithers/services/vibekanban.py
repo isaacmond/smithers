@@ -86,12 +86,14 @@ class VibekanbanService:
         self,
         title: str,
         description: str = "",
+        status: str = "in_progress",
     ) -> str | None:
         """Create a task in vibekanban.
 
         Args:
             title: Task title
             description: Task description
+            status: Initial task status (default: "in_progress")
 
         Returns:
             Task ID if successful, None otherwise.
@@ -108,18 +110,64 @@ class VibekanbanService:
                         "project_id": self.project_id,
                         "title": title,
                         "description": description,
+                        "status": status,
                     },
                 )
             )
             task_id = result.get("task_id") or result.get("id")
             if task_id:
-                logger.info(f"Created vibekanban task: {task_id}")
+                logger.info(f"Created vibekanban task: {task_id} (status={status})")
                 return str(task_id)
             logger.warning(f"No task_id in vibekanban response: {result}")
             return None
         except Exception:
             logger.warning("Failed to create vibekanban task", exc_info=True)
             return None
+
+    def update_task(
+        self,
+        task_id: str,
+        status: str | None = None,
+        description: str | None = None,
+        pr_url: str | None = None,
+    ) -> bool:
+        """Update a task's fields.
+
+        Args:
+            task_id: The task ID
+            status: New status (e.g., "in_progress", "completed", "failed")
+            description: New description text
+            pr_url: URL to associated pull request
+
+        Returns:
+            True if successful, False otherwise.
+        """
+        if not self.is_configured() or not task_id:
+            return False
+
+        try:
+            arguments: dict[str, Any] = {"task_id": task_id}
+            if status is not None:
+                arguments["status"] = status
+            if description is not None:
+                arguments["description"] = description
+            if pr_url is not None:
+                arguments["pr_url"] = pr_url
+
+            asyncio.run(self._call_tool("update_task", arguments))
+
+            updates = []
+            if status:
+                updates.append(f"status={status}")
+            if description:
+                updates.append("description updated")
+            if pr_url:
+                updates.append(f"pr_url={pr_url}")
+            logger.info(f"Updated vibekanban task {task_id}: {', '.join(updates)}")
+            return True
+        except Exception:
+            logger.warning(f"Failed to update vibekanban task {task_id}", exc_info=True)
+            return False
 
     def update_task_status(
         self,
@@ -135,24 +183,7 @@ class VibekanbanService:
         Returns:
             True if successful, False otherwise.
         """
-        if not self.is_configured() or not task_id:
-            return False
-
-        try:
-            asyncio.run(
-                self._call_tool(
-                    "update_task",
-                    {
-                        "task_id": task_id,
-                        "status": status,
-                    },
-                )
-            )
-            logger.info(f"Updated vibekanban task {task_id} status to {status}")
-            return True
-        except Exception:
-            logger.warning(f"Failed to update vibekanban task {task_id}", exc_info=True)
-            return False
+        return self.update_task(task_id, status=status)
 
     def get_task(self, task_id: str) -> TaskInfo | None:
         """Get task information.
@@ -203,6 +234,65 @@ class VibekanbanService:
         except Exception:
             logger.warning("Failed to list vibekanban projects", exc_info=True)
             return []
+
+    def list_tasks(self, status: str | None = None) -> list[dict[str, str]]:
+        """List tasks in the project.
+
+        Args:
+            status: Optional status filter (e.g., "in_progress", "todo")
+
+        Returns:
+            List of task dicts, or empty list on failure.
+        """
+        if not self.is_configured():
+            return []
+
+        try:
+            args: dict[str, str] = {"project_id": str(self.project_id)}
+            if status:
+                args["status"] = status
+            result = asyncio.run(self._call_tool("list_tasks", args))
+            tasks = result.get("tasks", [])
+            if isinstance(tasks, list):
+                return tasks
+            return []
+        except Exception:
+            logger.warning("Failed to list vibekanban tasks", exc_info=True)
+            return []
+
+    def cleanup_orphaned_tasks(self) -> int:
+        """Mark orphaned in_progress [impl] and [fix] tasks as failed.
+
+        Finds tasks with titles starting with [impl] or [fix] that are
+        still in_progress (from previous interrupted sessions) and marks
+        them as failed.
+
+        Returns:
+            Number of tasks cleaned up.
+        """
+        if not self.is_configured():
+            return 0
+
+        cleaned = 0
+        try:
+            tasks = self.list_tasks(status="in_progress")
+            for task in tasks:
+                title = task.get("title", "")
+                task_id = task.get("id")
+                # Only clean up smithers-created tasks
+                if (
+                    task_id
+                    and title.startswith(("[impl]", "[fix]"))
+                    and self.update_task_status(task_id, "failed")
+                ):
+                    logger.info(f"Cleaned up orphaned task: {task_id} ({title})")
+                    cleaned += 1
+        except Exception:
+            logger.warning("Failed to cleanup orphaned tasks", exc_info=True)
+
+        if cleaned > 0:
+            logger.info(f"Cleaned up {cleaned} orphaned vibekanban task(s)")
+        return cleaned
 
 
 def _is_vibekanban_running() -> bool:
@@ -277,12 +367,15 @@ def _launch_vibekanban() -> bool:
         return False
 
 
-def create_vibekanban_service() -> VibekanbanService:
+def create_vibekanban_service(cleanup: bool = True) -> VibekanbanService:
     """Create a VibekanbanService from configuration.
 
     Loads configuration from ~/.smithers/config.json and environment variables.
     Auto-discovers project by matching current directory name to project names.
     Launches vibe-kanban if not already running.
+
+    Args:
+        cleanup: If True, mark orphaned in_progress tasks as failed on startup.
 
     Returns:
         Configured VibekanbanService instance.
@@ -298,10 +391,16 @@ def create_vibekanban_service() -> VibekanbanService:
     if config.enabled and not config.project_id:
         config.project_id = _auto_discover_project_id()
 
-    return VibekanbanService(
+    service = VibekanbanService(
         project_id=config.project_id,
         enabled=config.enabled,
     )
+
+    # Cleanup orphaned tasks from previous interrupted sessions
+    if cleanup and service.is_configured():
+        service.cleanup_orphaned_tasks()
+
+    return service
 
 
 def _auto_discover_project_id() -> str | None:

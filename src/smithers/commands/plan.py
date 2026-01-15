@@ -91,13 +91,12 @@ def plan(
     claude_plan_file = Path.cwd() / ".claude" / "plan.md"
     logger.debug(f"Claude plan file: {claude_plan_file}")
 
-    # Create vibekanban task for tracking
+    # Create vibekanban task for tracking (created as in_progress by default)
     vk_task_id = vibekanban_service.create_task(
         title=f"Planning: {output_path.stem}",
         description="Interactive planning session with Claude",
     )
     if vk_task_id:
-        vibekanban_service.update_task_status(vk_task_id, "in_progress")
         logger.info(f"Created vibekanban task: {vk_task_id}")
 
     print_info("\nLaunching Claude in plan mode...")

@@ -286,10 +286,11 @@ Smithers creates a **separate vibekanban task for each Claude Code session**:
 Each task is:
 1. **Created** when the Claude session starts
 2. **Set to "in_progress"** while running
-3. **Marked as "completed"** when the session succeeds
-4. **Marked as "failed"** if the session fails
+3. **Linked to the PR** when available (PR URL is attached to the task)
+4. **Marked as "completed"** when the session succeeds
+5. **Marked as "failed"** if the session fails
 
-This allows you to monitor individual Claude sessions in real-time through the vibekanban UI.
+This allows you to monitor individual Claude sessions in real-time through the vibekanban UI, with direct links to the associated PRs.
 
 ### Requirements
 

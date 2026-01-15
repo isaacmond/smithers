@@ -168,12 +168,12 @@ def standardize(
     vk_task_id: str | None = None
     if not dry_run:
         pr_list = ", ".join(f"#{pr}" for pr in pr_numbers)
+        # Create vibekanban task (created as in_progress by default)
         vk_task_id = vibekanban_service.create_task(
             title=f"Standardize PRs: {pr_list}",
             description=f"Standardizing titles and descriptions for: {pr_list}",
         )
         if vk_task_id:
-            vibekanban_service.update_task_status(vk_task_id, "in_progress")
             logger.info(f"Created vibekanban task: {vk_task_id}")
 
     # Fetch PR info and diffs

@@ -168,15 +168,17 @@ def fix(
         console.print("\n[yellow]DRY RUN MODE - No changes will be made[/yellow]")
         return
 
-    # Get branch names for each PR
+    # Get branch names and URLs for each PR
     logger.info("Fetching branch names for PRs")
     print_info("\nFetching branch names for PRs...")
     pr_branches: dict[int, str] = {}
+    pr_urls: dict[int, str] = {}
     for pr_num in pr_numbers:
         try:
             pr_info = github_service.get_pr_info(pr_num)
             pr_branches[pr_num] = pr_info.branch
-            logger.info(f"PR #{pr_num}: branch={pr_info.branch}")
+            pr_urls[pr_num] = pr_info.url
+            logger.info(f"PR #{pr_num}: branch={pr_info.branch}, url={pr_info.url}")
             console.print(f"  PR #{pr_num}: {pr_info.branch}")
         except SmithersError as e:
             logger.exception(f"Failed to get info for PR #{pr_num}")
@@ -207,6 +209,7 @@ def fix(
                 todo_file=todo_file,
                 pr_numbers=pr_numbers,
                 pr_branches=pr_branches,
+                pr_urls=pr_urls,
                 git_service=git_service,
                 tmux_service=tmux_service,
                 claude_service=claude_service,
@@ -250,6 +253,7 @@ def _run_fix_iteration(
     todo_file: Path,
     pr_numbers: list[int],
     pr_branches: dict[int, str],
+    pr_urls: dict[int, str],
     git_service: GitService,
     tmux_service: TmuxService,
     claude_service: ClaudeService,
@@ -263,6 +267,7 @@ def _run_fix_iteration(
         todo_file: Path to the TODO file for this iteration.
         pr_numbers: List of PR numbers to fix.
         pr_branches: Mapping of PR numbers to branch names.
+        pr_urls: Mapping of PR numbers to GitHub URLs.
         git_service: Git service instance.
         tmux_service: Tmux service instance.
         claude_service: Claude service instance.
@@ -343,13 +348,21 @@ def _run_fix_iteration(
         )
         prompt_file.write_text(prompt)
 
-        # Create vibekanban task for this PR fix session
+        # Create vibekanban task for this PR fix session with PR link
+        pr_url = pr_urls.get(pr_num, "")
+        task_description = (
+            f"Fixing review comments on {branch}\n\nPR: {pr_url}"
+            if pr_url
+            else f"Fixing review comments on {branch}"
+        )
         pr_vk_task_id = vibekanban_service.create_task(
             title=f"[fix] PR #{pr_num}: {branch}",
-            description=f"Fixing review comments on {branch}",
+            description=task_description,
         )
         if pr_vk_task_id:
-            vibekanban_service.update_task_status(pr_vk_task_id, "in_progress")
+            vibekanban_service.update_task(
+                pr_vk_task_id, status="in_progress", pr_url=pr_url if pr_url else None
+            )
             logger.info(f"Created vibekanban task for PR #{pr_num}: {pr_vk_task_id}")
 
         group_data.append(
