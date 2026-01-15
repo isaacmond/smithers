@@ -33,7 +33,7 @@ def cleanup(
 ) -> None:
     """Delete all smithers-created vibekanban tasks and optionally git worktrees.
 
-    Finds and deletes all tasks with [impl] or [fix] prefixes across
+    Finds and deletes all tasks with [impl], [fix], or [plan] prefixes across
     all statuses (todo, in_progress, completed, failed).
 
     With --worktrees or --worktrees-only, also cleans up git worktrees

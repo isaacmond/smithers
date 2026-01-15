@@ -156,10 +156,15 @@ class TmuxService:
 
         # Build the inner command with script wrapper
         inner_command = " ".join(shlex.quote(arg) for arg in argv)
-        # Use script to capture terminal output to a file
-        # The command writes exit code to a file before exiting
+        # Use script to capture terminal output to a file.
+        # Always write an exit code marker on shell EXIT so the wrapper
+        # can report a stable status even if the session is interrupted.
+        exit_code_var = shlex.quote(str(exit_code_file))
         wrapped_command = (
-            f"SMITHERS_TMUX_WRAPPED=1 {inner_command}; echo $? > {shlex.quote(str(exit_code_file))}"
+            f"EXIT_CODE_FILE={exit_code_var}; "
+            'trap \'mkdir -p "$(dirname "$EXIT_CODE_FILE")"; '
+            'echo $? > "$EXIT_CODE_FILE"\' EXIT; '
+            f"SMITHERS_TMUX_WRAPPED=1 {inner_command}"
         )
         # macOS (BSD) and Linux (GNU) have different script command syntax:
         # - Linux (util-linux): script -q -f FILE -c "COMMAND" (-f flushes after each write)

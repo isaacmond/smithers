@@ -344,7 +344,7 @@ class VibekanbanService:
     def list_all_smithers_tasks(self) -> list[dict[str, str]]:
         """List all smithers-created tasks across all statuses.
 
-        Finds tasks with titles starting with [impl] or [fix] in any status.
+        Finds tasks with titles starting with [impl], [fix], or [plan] in any status.
 
         Returns:
             List of task dicts, or empty list on failure.
@@ -360,7 +360,7 @@ class VibekanbanService:
                 tasks = self.list_tasks(status=status)
                 for task in tasks:
                     title = task.get("title", "")
-                    if title.startswith(("[impl]", "[fix]")):
+                    if title.startswith(("[impl]", "[fix]", "[plan]")):
                         smithers_tasks.append(task)
             except Exception:
                 logger.warning(f"Failed to list tasks with status {status}", exc_info=True)
@@ -368,9 +368,9 @@ class VibekanbanService:
         return smithers_tasks
 
     def cleanup_orphaned_tasks(self) -> int:
-        """Mark orphaned in_progress [impl] and [fix] tasks as failed.
+        """Mark orphaned in_progress [impl], [fix], and [plan] tasks as failed.
 
-        Finds tasks with titles starting with [impl] or [fix] that are
+        Finds tasks with titles starting with [impl], [fix], or [plan] that are
         still in_progress (from previous interrupted sessions) and marks
         them as failed.
 
@@ -389,7 +389,7 @@ class VibekanbanService:
                 # Only clean up smithers-created tasks
                 if (
                     task_id
-                    and title.startswith(("[impl]", "[fix]"))
+                    and title.startswith(("[impl]", "[fix]", "[plan]"))
                     and self.update_task_status(task_id, "failed")
                 ):
                     logger.info(f"Cleaned up orphaned task: {task_id} ({title})")

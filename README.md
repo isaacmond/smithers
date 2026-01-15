@@ -133,6 +133,7 @@ Smithers runs long operations in background tmux sessions while streaming output
 - **You see all output** as it happens
 - **Press Ctrl+C to detach** without stopping the session
 - **Reconnect anytime** with `smithers rejoin`
+- **Exit status is recorded** in `~/.smithers/sessions/<session>/exit_code` for reliable completion reporting
 
 ```bash
 smithers sessions              # List running sessions
