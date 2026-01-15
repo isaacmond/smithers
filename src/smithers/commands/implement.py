@@ -483,16 +483,12 @@ def _run_implementation_phase(
                     print_header(f"OUTPUT FROM STAGE {stage.number}")
                     console.print(output)
 
-                # Extract PR number from JSON
+                # Extract PR number using multiple strategies
                 from smithers.services.claude import ClaudeResult
 
                 stage_result = ClaudeResult(output=output, exit_code=0, success=True)
-                json_output = stage_result.extract_json()
-
-                pr_num: int | None = None
-                if json_output:
-                    pr_num = json_output.get("pr_number")
-                    logger.debug(f"Stage {stage.number} JSON output: {json_output}")
+                pr_num = stage_result.extract_pr_number()
+                logger.debug(f"Stage {stage.number} extracted PR number: {pr_num}")
 
                 if pr_num:
                     collected_prs.append(pr_num)

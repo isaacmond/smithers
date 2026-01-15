@@ -81,6 +81,45 @@ class ClaudeResult:
                 return None
         return None
 
+    def extract_pr_number(self) -> int | None:
+        """Extract a PR number from the output using multiple strategies.
+
+        Tries the following in order:
+        1. Structured JSON output with pr_number field
+        2. Common patterns like "PR #123", "pull request #123", "Created PR #123"
+        3. GitHub PR URL patterns
+
+        Returns:
+            The PR number if found, None otherwise
+        """
+        # Strategy 1: Try structured JSON first
+        json_output = self.extract_json()
+        if json_output:
+            pr_num = json_output.get("pr_number")
+            if pr_num is not None:
+                return int(pr_num)
+
+        # Strategy 2: Look for common PR reference patterns
+        # Match patterns like "PR #123", "pull request #123", "Created PR #123"
+        pr_patterns = [
+            r"(?:PR|Pull Request|pull request|Created PR|Opened PR|merged PR)\s*#(\d+)",
+            r"(?:PR|Pull Request|pull request)\s+(\d+)",
+            r"#(\d+)\s+(?:created|opened|merged)",
+        ]
+        for pattern in pr_patterns:
+            match = re.search(pattern, self.output, re.IGNORECASE)
+            if match:
+                return int(match.group(1))
+
+        # Strategy 3: Look for GitHub PR URL patterns
+        # Match patterns like "github.com/owner/repo/pull/123"
+        url_pattern = r"github\.com/[^/]+/[^/]+/pull/(\d+)"
+        match = re.search(url_pattern, self.output)
+        if match:
+            return int(match.group(1))
+
+        return None
+
 
 @dataclass
 class ClaudeService:

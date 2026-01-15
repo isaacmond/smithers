@@ -544,11 +544,12 @@ class TmuxService:
         logger.info("All sessions completed")
         console.print("[green]All sessions completed[/green]")
 
-    def kill_session(self, name: str) -> None:
+    def kill_session(self, name: str, wait_for_cleanup: bool = True) -> None:
         """Kill a tmux session if it exists.
 
         Args:
             name: Session name (will be sanitized)
+            wait_for_cleanup: If True, wait for session to be fully cleaned up
         """
         session = self.sanitize_session_name(name)
         logger.debug(f"Killing tmux session: {session}")
@@ -560,6 +561,13 @@ class TmuxService:
         )
         if result.returncode == 0:
             logger.debug(f"Session '{session}' killed successfully")
+            # Wait for tmux to fully clean up the session to avoid race conditions
+            # when creating a new session with the same name
+            if wait_for_cleanup:
+                for _ in range(10):  # Up to 0.5 seconds
+                    if not self.session_exists(session):
+                        break
+                    time.sleep(0.05)
         else:
             logger.debug(f"Session '{session}' kill returned {result.returncode} (may not exist)")
 
