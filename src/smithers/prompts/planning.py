@@ -61,11 +61,15 @@ IMPORTANT: For the "Depends on" field, use the actual branch name (e.g., "{branc
 
 ### Guidelines
 
-**PR Size and Scope:**
-- Each stage should produce a substantial PR of **hundreds of lines** (200-500+ lines is ideal)
-- Aim for **fewer, larger PRs** rather than many small ones — consolidate related work
-- If a stage would be under 100 lines, combine it with an adjacent stage
-- A typical implementation should have 2-5 stages total, not 8-10
+**PR Size and Scope (CRITICAL - READ THIS CAREFULLY):**
+- **MINIMIZE THE NUMBER OF PRs** — This is the single most important guideline
+- Target **2-3 stages maximum** for most implementations. Only use 4-5 for genuinely large features
+- Each stage should be a **substantial PR of 300-800+ lines** of meaningful code
+- If your plan has more than 3 stages, you MUST consolidate. Ask yourself: "Can these be combined?"
+- **NEVER** create stages under 200 lines — always combine them with adjacent work
+- Think of each PR as having significant review overhead — fewer PRs is ALWAYS better
+- Common mistake to avoid: Creating too many small, granular PRs. Don't do this.
+- When in doubt, COMBINE stages. Err heavily on the side of fewer, larger PRs
 
 **Stage Structure:**
 - Break the work into logical stages that are executed SEQUENTIALLY (one at a time)
@@ -150,4 +154,98 @@ For example: `{branch_prefix}stage-1-models`, `{branch_prefix}stage-2-api`, etc.
         branch_prefix_instruction=branch_prefix_instruction,
         branch_example_1=branch_example_1,
         branch_example_2=branch_example_2,
+    )
+
+
+PLANNING_REVISION_PROMPT_TEMPLATE = """You previously created an implementation plan, but the user has requested changes.
+
+## Original Design Document
+Location: {design_doc_path}
+
+{design_content}
+
+## Previous Plan
+The plan you created is at: {todo_file_path}
+
+{previous_plan}
+
+## User Feedback
+The user reviewed your plan and provided this feedback:
+
+{user_feedback}
+
+## Your Task
+Revise the plan based on the user's feedback. Update the TODO file at {todo_file_path} with the revised plan.
+
+{branch_prefix_instruction}
+
+### Guidelines (IMPORTANT - Same as before)
+
+**PR Size and Scope (CRITICAL - READ THIS CAREFULLY):**
+- **MINIMIZE THE NUMBER OF PRs** — This is the single most important guideline
+- Target **2-3 stages maximum** for most implementations. Only use 4-5 for genuinely large features
+- Each stage should be a **substantial PR of 300-800+ lines** of meaningful code
+- If your plan has more than 3 stages, you MUST consolidate. Ask yourself: "Can these be combined?"
+- **NEVER** create stages under 200 lines — always combine them with adjacent work
+- Think of each PR as having significant review overhead — fewer PRs is ALWAYS better
+- Common mistake to avoid: Creating too many small, granular PRs. Don't do this.
+- When in doubt, COMBINE stages. Err heavily on the side of fewer, larger PRs
+
+**Testing (CRITICAL):**
+- Tests MUST be included in the same stage as the code they test — NEVER create separate testing stages/PRs
+
+### Output (CRITICAL - Valid JSON Required)
+After updating the TODO file, output the following JSON block at the END of your response.
+
+---JSON_OUTPUT---
+{{
+  "todo_file_created": "{todo_file_path}",
+  "num_stages": <number>,
+  "stages": [
+    {{"number": 1, "branch": "<branch-name>", "base": "<base-branch-or-none>"}},
+    {{"number": 2, "branch": "<branch-name>", "base": "<dependency-branch-name>"}}
+  ],
+  "error": null
+}}
+---END_JSON---
+
+## Begin
+Revise the plan based on the user's feedback."""
+
+
+def render_planning_revision_prompt(
+    design_doc_path: Path,
+    design_content: str,
+    todo_file_path: Path,
+    previous_plan: str,
+    user_feedback: str,
+    branch_prefix: str,
+) -> str:
+    """Render the planning revision prompt.
+
+    Args:
+        design_doc_path: Path to the design document
+        design_content: Content of the design document
+        todo_file_path: Path to the existing TODO file
+        previous_plan: Content of the previous plan
+        user_feedback: User's feedback on why they rejected the plan
+        branch_prefix: Prefix for branch names (e.g., "username/")
+
+    Returns:
+        The rendered prompt string
+    """
+    branch_prefix_instruction = f"""
+### Branch Naming Convention
+**IMPORTANT**: All branch names MUST start with the prefix `{branch_prefix}`.
+For example: `{branch_prefix}stage-1-models`, `{branch_prefix}stage-2-api`, etc.
+"""
+
+    return render_template(
+        PLANNING_REVISION_PROMPT_TEMPLATE,
+        design_doc_path=design_doc_path,
+        design_content=design_content,
+        todo_file_path=todo_file_path,
+        previous_plan=previous_plan,
+        user_feedback=user_feedback,
+        branch_prefix_instruction=branch_prefix_instruction,
     )

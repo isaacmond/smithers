@@ -565,38 +565,54 @@ class TmuxService:
         console.print(f"Waiting for {len(sessions)} session(s) to complete...")
 
         iteration = 0
-        with create_progress() as progress:
-            task = progress.add_task(
-                f"[cyan]Waiting for {len(remaining)} sessions...",
-                total=None,
-            )
+        try:
+            with create_progress() as progress:
+                task = progress.add_task(
+                    f"[cyan]Waiting for {len(remaining)} sessions...",
+                    total=None,
+                )
 
-            while remaining:
-                iteration += 1
-                still_running: list[str] = []
-                for session in remaining:
-                    if self.session_exists(session):
-                        still_running.append(session)
-                    else:
-                        logger.info(f"Session '{session}' completed")
-                        console.print(f"  [green]Session '{session}' completed[/green]")
+                while remaining:
+                    iteration += 1
+                    still_running: list[str] = []
+                    for session in remaining:
+                        try:
+                            if self.session_exists(session):
+                                still_running.append(session)
+                            else:
+                                logger.info(f"Session '{session}' completed")
+                                console.print(f"  [green]Session '{session}' completed[/green]")
+                        except Exception as e:
+                            logger.exception("Error checking session '%s'", session)
+                            # Assume session is done if we can't check it
+                            console.print(
+                                f"  [yellow]Session '{session}' check failed: {e}[/yellow]"
+                            )
 
-                remaining = still_running
+                    remaining = still_running
 
-                if remaining:
-                    logger.debug(
-                        f"Wait iteration {iteration}: {len(remaining)} sessions still running"
-                    )
-                    shown = ", ".join(remaining[:3])
-                    suffix = "..." if len(remaining) > 3 else ""
-                    progress.update(
-                        task,
-                        description=f"[cyan]Waiting for {len(remaining)} sessions: {shown}{suffix}",
-                    )
-                    time.sleep(poll_interval)
+                    if remaining:
+                        logger.debug(
+                            f"Wait iteration {iteration}: {len(remaining)} sessions still running"
+                        )
+                        shown = ", ".join(remaining[:3])
+                        suffix = "..." if len(remaining) > 3 else ""
+                        progress.update(
+                            task,
+                            description=f"[cyan]Waiting for {len(remaining)}: {shown}{suffix}",
+                        )
+                        time.sleep(poll_interval)
 
-        logger.info("All sessions completed")
-        console.print("[green]All sessions completed[/green]")
+            logger.info("All sessions completed")
+            console.print("[green]All sessions completed[/green]")
+        except KeyboardInterrupt:
+            logger.warning("Keyboard interrupt during session wait")
+            console.print("[yellow]Interrupted while waiting for sessions[/yellow]")
+            raise
+        except Exception as e:
+            logger.exception("Unexpected error during session wait")
+            console.print(f"[red]Error waiting for sessions: {e}[/red]")
+            raise
 
     def kill_session(self, name: str, wait_for_cleanup: bool = True) -> None:
         """Kill a tmux session if it exists.

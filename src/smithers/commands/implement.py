@@ -1,5 +1,6 @@
 """Implement command - creates staged PRs from a design document."""
 
+import select
 import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -9,13 +10,20 @@ from typing import Annotated
 import typer
 
 from smithers.commands.quote import print_random_quote
-from smithers.console import console, print_error, print_header, print_info, print_success
+from smithers.console import (
+    console,
+    print_error,
+    print_header,
+    print_info,
+    print_plan_summary,
+    print_success,
+)
 from smithers.exceptions import DependencyMissingError, SmithersError
 from smithers.logging_config import get_logger, get_session_log_file
 from smithers.models.config import Config, set_config
 from smithers.models.todo import TodoFile
 from smithers.prompts.implementation import render_implementation_prompt
-from smithers.prompts.planning import render_planning_prompt
+from smithers.prompts.planning import render_planning_prompt, render_planning_revision_prompt
 from smithers.services.claude import ClaudeService
 from smithers.services.git import GitService
 from smithers.services.tmux import TmuxService
@@ -35,6 +43,92 @@ class PlanResult:
     todo_file: Path
     num_stages: int
     design_content: str
+
+
+# Default timeout for plan approval (5 minutes)
+PLAN_APPROVAL_TIMEOUT_SECONDS = 300
+
+
+def _prompt_with_timeout(prompt: str, timeout_seconds: int = PLAN_APPROVAL_TIMEOUT_SECONDS) -> str:
+    """Prompt for input with a timeout.
+
+    Args:
+        prompt: The prompt message to display
+        timeout_seconds: Number of seconds to wait before timeout
+
+    Returns:
+        The user's input, or empty string if timeout occurs
+    """
+    minutes = timeout_seconds // 60
+    console.print(f"{prompt} (auto-approving in {minutes} min if no response): ", end="")
+
+    # Use select for Unix-like systems (works on macOS/Linux)
+    ready, _, _ = select.select([sys.stdin], [], [], timeout_seconds)
+    if ready:
+        return sys.stdin.readline().strip()
+
+    # Timeout occurred
+    console.print()  # New line after timeout
+    return ""
+
+
+def run_revision_session(
+    *,
+    design_doc: Path,
+    todo_file: Path,
+    user_feedback: str,
+    claude_service: ClaudeService,
+    config: Config,
+) -> PlanResult:
+    """Revise an existing plan based on user feedback.
+
+    Args:
+        design_doc: Path to the design document
+        todo_file: Path to the existing TODO file
+        user_feedback: User's feedback on what to change
+        claude_service: Claude service instance
+        config: Configuration instance
+
+    Returns:
+        PlanResult with the updated plan
+    """
+    logger.info(f"Starting revision session with feedback: {user_feedback[:100]}...")
+    design_content = design_doc.read_text()
+    previous_plan = todo_file.read_text()
+
+    revision_prompt = render_planning_revision_prompt(
+        design_doc_path=design_doc,
+        design_content=design_content,
+        todo_file_path=todo_file,
+        previous_plan=previous_plan,
+        user_feedback=user_feedback,
+        branch_prefix=config.branch_prefix,
+    )
+
+    print_info("Running Claude Code for plan revision...")
+    result = claude_service.run_prompt(revision_prompt)
+
+    if config.verbose:
+        console.print(result.output)
+
+    if not result.success:
+        logger.error(f"Claude Code failed during revision: exit_code={result.exit_code}")
+        raise SmithersError(f"Claude Code failed during revision: {result.output}")
+
+    if not todo_file.exists():
+        logger.error(f"TODO file not found after revision at {todo_file}")
+        raise SmithersError(f"TODO file not found after revision at {todo_file}")
+
+    json_output = result.extract_json()
+    num_stages = json_output.get("num_stages") if json_output else result.extract_int("NUM_STAGES")
+
+    if num_stages is None or num_stages < 1:
+        logger.error("Could not determine number of stages from Claude output")
+        raise SmithersError("Could not determine number of stages from Claude output")
+
+    logger.info(f"Revision complete: {num_stages} stages")
+    print_success(f"Revision complete. TODO file updated with {num_stages} stages.")
+    return PlanResult(todo_file=todo_file, num_stages=num_stages, design_content=design_content)
 
 
 def run_planning_session(
@@ -132,6 +226,10 @@ def implement(
         bool,
         typer.Option("--resume", "-r", help="Resume from checkpoint - skip completed stages"),
     ] = False,
+    auto_approve: Annotated[
+        bool,
+        typer.Option("--auto-approve", "-y", help="Auto-approve the plan without confirmation"),
+    ] = False,
 ) -> None:
     """Implement a design document as staged PRs.
 
@@ -150,6 +248,7 @@ def implement(
     logger.info(f"  dry_run: {dry_run}")
     logger.info(f"  verbose: {verbose}")
     logger.info(f"  resume: {resume}")
+    logger.info(f"  auto_approve: {auto_approve}")
     logger.info("=" * 60)
 
     # Set up configuration
@@ -245,13 +344,60 @@ def implement(
         else:
             logger.info("Phase 1: Planning")
             print_header("PHASE 1: PLANNING")
-            plan_result = run_planning_session(
-                design_doc=design_doc,
-                todo_file=todo_file_path,
-                claude_service=claude_service,
-                config=config,
-            )
-            design_content = plan_result.design_content
+
+            # Planning loop with approval
+            plan_approved = False
+            user_feedback: str | None = None
+            design_content = None
+
+            while not plan_approved:
+                # Run planning or revision based on whether we have feedback
+                if user_feedback:
+                    plan_result = run_revision_session(
+                        design_doc=design_doc,
+                        todo_file=todo_file_path,
+                        user_feedback=user_feedback,
+                        claude_service=claude_service,
+                        config=config,
+                    )
+                else:
+                    plan_result = run_planning_session(
+                        design_doc=design_doc,
+                        todo_file=todo_file_path,
+                        claude_service=claude_service,
+                        config=config,
+                    )
+
+                design_content = plan_result.design_content
+
+                # Display the plan summary
+                todo = TodoFile.parse(todo_file_path)
+                print_plan_summary(todo)
+
+                # Check for auto-approve
+                if auto_approve:
+                    logger.info("Auto-approving plan (--auto-approve flag set)")
+                    console.print("[cyan]Auto-approving plan...[/cyan]")
+                    plan_approved = True
+                    break
+
+                # Prompt for approval with timeout
+                response = _prompt_with_timeout("Proceed with this plan? [y/n]")
+
+                if response == "":
+                    # Timeout occurred - auto-approve
+                    logger.info("No response received, auto-approving plan")
+                    console.print("[yellow]No response received, auto-approving plan...[/yellow]")
+                    plan_approved = True
+                elif response.lower() in ("y", "yes"):
+                    logger.info("User approved plan")
+                    plan_approved = True
+                else:
+                    # User rejected - ask for feedback
+                    logger.info("User rejected plan, requesting feedback")
+                    user_feedback = typer.prompt("What would you like changed?")
+                    logger.info(f"User feedback: {user_feedback}")
+                    console.print()
 
             logger.info("Phase 2: Implementation")
             print_header("PHASE 2: IMPLEMENTATION")
@@ -283,8 +429,19 @@ def implement(
     console.print(f"TODO file: [cyan]{todo_file_path}[/cyan]")
     console.print(f"PRs created: [green]{', '.join(f'#{pr}' for pr in collected_prs)}[/green]")
 
-    # Transition to fix mode if we have PRs
+    # Transition to standardize and fix modes if we have PRs
     if collected_prs:
+        print_info("\nAutomatically transitioning to STANDARDIZE mode...")
+        # Import here to avoid circular import
+        from smithers.commands.standardize import standardize as standardize_command
+
+        standardize_command(
+            pr_identifiers=[str(pr) for pr in collected_prs],
+            model=model,
+            dry_run=dry_run,
+            verbose=verbose,
+        )
+
         print_info("\nAutomatically transitioning to FIX mode...")
         # Import here to avoid circular import
         from smithers.commands.fix import fix as fix_command

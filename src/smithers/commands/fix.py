@@ -1,7 +1,6 @@
 """Fix command - iteratively fix PR review comments and CI failures."""
 
 import sys
-import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
@@ -199,6 +198,7 @@ def fix(
     design_doc_base = design_doc.stem
 
     iteration = 0
+    exit_error: Exception | None = None
     try:
         while True:
             iteration += 1
@@ -240,19 +240,26 @@ def fix(
                 logger.info("Comments resolved but CI still failing")
                 console.print("\n[yellow]Comments resolved but CI still failing[/yellow]")
                 console.print("Continuing to fix CI issues...")
-                time.sleep(10)
                 continue
 
-            logger.info(f"Iteration {iteration} complete, waiting 10s before next check")
+            logger.info(f"Iteration {iteration} complete, starting next check")
             console.print(f"\nIteration {iteration} complete")
-            console.print("Checking for new comments in 10 seconds...")
-            time.sleep(10)
 
+    except KeyboardInterrupt:
+        logger.warning("Fix loop interrupted by user")
+        console.print("\n[yellow]Interrupted by user[/yellow]")
+    except Exception as e:
+        exit_error = e
+        logger.exception("Unexpected error in fix loop")
+        console.print(f"\n[red]Unexpected error: {e}[/red]")
     finally:
         # Cleanup on exit
         logger.info("Cleanup: removing worktrees and killing sessions")
         git_service.cleanup_all_worktrees()
         tmux_service.kill_all_smithers_sessions()
+
+    if exit_error:
+        raise typer.Exit(1) from exit_error
 
     print_header("Smithers Loop Complete!")
     console.print(f"Processed {len(pr_numbers)} PRs")
@@ -309,13 +316,11 @@ def _run_fix_iteration(
     if not result.success:
         logger.warning(f"Claude Code failed during TODO creation: exit_code={result.exit_code}")
         console.print("[yellow]Claude Code failed during TODO creation. Retrying...[/yellow]")
-        time.sleep(5)
         return {"all_done": False, "comments_done_ci_failing": False}
 
     if not todo_file.exists():
         logger.warning(f"TODO file not created at {todo_file}")
         console.print(f"[yellow]TODO file not created at {todo_file}. Retrying...[/yellow]")
-        time.sleep(5)
         return {"all_done": False, "comments_done_ci_failing": False}
 
     logger.info(f"Fix plan created: {todo_file}")

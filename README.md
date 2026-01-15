@@ -64,12 +64,17 @@ smithers implement docs/my-feature.md --branch-prefix isaac/
 smithers implement docs/my-feature.md --branch-prefix isaac/ --base main
 smithers implement docs/my-feature.md --branch-prefix isaac/ --model claude-sonnet-4-20250514
 
+# Auto-approve the plan without confirmation
+smithers implement docs/my-feature.md --branch-prefix isaac/ --auto-approve
+
 # Use an existing plan file (skip planning phase)
 smithers implement docs/my-feature.md --branch-prefix isaac/ --todo-file ~/.smithers/plans/my-plan.md
 
 # Resume an interrupted run
 smithers implement docs/my-feature.md --branch-prefix isaac/ --todo-file ~/.smithers/plans/my-plan.md --resume
 ```
+
+After planning, smithers displays the plan summary and asks for confirmation before proceeding. If no response is received within 5 minutes, the plan is auto-approved. You can provide feedback to revise the plan if needed.
 
 ### fix
 
@@ -176,6 +181,7 @@ Session logs in `~/.smithers/logs/` contain:
 | `--base` | `-b` | Base branch for PRs (default: main) | implement |
 | `--todo-file` | `-t` | Existing plan file to use | implement |
 | `--resume` | `-r` | Resume from checkpoint, skip completed stages | implement |
+| `--auto-approve` | `-y` | Auto-approve the plan without confirmation | implement |
 | `--max-iterations` | | Max fix iterations, 0=unlimited (default: 0) | fix |
 | `--output` | `-o` | Output path for plan file | plan |
 | `--model` | `-m` | Claude model (default: claude-opus-4-5-20251101) | all |
@@ -187,8 +193,11 @@ Session logs in `~/.smithers/logs/` contain:
 ### Implement Mode
 
 1. **Planning Phase**: Claude analyzes the design document and creates a TODO file with stages
-2. **Implementation Phase**: Executes stages sequentially, creating stacked PRs
-3. **Transition**: Automatically runs Fix mode on created PRs
+2. **Plan Approval**: Displays the plan and asks for confirmation (5-minute timeout auto-approves)
+   - If rejected, you can provide feedback and Claude will revise the plan
+   - Use `--auto-approve` / `-y` to skip confirmation
+3. **Implementation Phase**: Executes stages sequentially, creating stacked PRs
+4. **Transition**: Automatically runs Fix mode on created PRs
 
 Checkpoints are saved to the TODO file. Use `--resume` to skip completed stages.
 
@@ -199,6 +208,8 @@ Loops until ALL conditions are met:
 - All merge conflicts resolved
 - All review comments addressed (0 unresolved)
 - All CI/CD checks passing
+
+Includes robust error handling that logs exceptions during parallel session execution, making it easier to diagnose issues when sessions fail unexpectedly.
 
 ## Integrations
 
