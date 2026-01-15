@@ -58,18 +58,3 @@ class Stage:
             files=[str(f) for f in files],
             acceptance_criteria=[str(c) for c in criteria],
         )
-
-    def to_dict(self) -> dict[str, object]:
-        """Convert Stage to a dictionary."""
-        return {
-            "number": self.number,
-            "title": self.title,
-            "branch": self.branch,
-            "parallel_group": self.parallel_group,
-            "description": self.description,
-            "status": self.status.value,
-            "depends_on": self.depends_on,
-            "pr_number": self.pr_number,
-            "files": self.files,
-            "acceptance_criteria": self.acceptance_criteria,
-        }

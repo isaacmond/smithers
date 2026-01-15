@@ -3,7 +3,6 @@
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
-from rich.table import Table
 
 # Global console instance
 console = Console()
@@ -34,12 +33,6 @@ def print_warning(message: str) -> None:
 def print_info(message: str) -> None:
     """Print an info message."""
     console.print(f"[blue]{message}[/blue]")
-
-
-def create_status_table(title: str) -> Table:
-    """Create a table for displaying status information."""
-    table = Table(title=title, show_header=True, header_style="bold magenta")
-    return table
 
 
 def create_progress() -> Progress:

@@ -28,6 +28,7 @@ def sessions() -> None:
 
     console.print("\n[dim]Rejoin with:[/dim] smithers rejoin <session-name>")
     console.print("[dim]Or just:[/dim] smithers rejoin  [dim](for the most recent)[/dim]")
+    console.print("[dim]Kill with:[/dim] smithers kill <session-name>")
 
     # Show last session hint if available
     last_session = tmux_service.get_last_session()

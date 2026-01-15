@@ -4,7 +4,7 @@ import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, TypedDict
+from typing import Annotated
 
 import typer
 
@@ -19,22 +19,8 @@ from smithers.prompts.planning import render_planning_prompt
 from smithers.services.claude import ClaudeService
 from smithers.services.git import GitService
 from smithers.services.tmux import TmuxService
-from smithers.services.todo_updater import TodoUpdater
 
 logger = get_logger("smithers.commands.implement")
-
-if TYPE_CHECKING:
-    from smithers.models.stage import Stage
-
-
-class StageData(TypedDict):
-    """Type definition for stage data dictionary."""
-
-    stage: Stage
-    worktree_path: Path
-    prompt_file: Path
-    output_file: Path
-    exit_file: Path
 
 
 @dataclass
@@ -102,6 +88,14 @@ def implement(
             readable=True,
         ),
     ],
+    branch_prefix: Annotated[
+        str,
+        typer.Option(
+            "--branch-prefix",
+            "-p",
+            help="Prefix for branch names (e.g., 'username/' for 'username/stage-1-models')",
+        ),
+    ],
     base_branch: Annotated[
         str,
         typer.Option("--base", "-b", help="Base branch to create PRs against"),
@@ -121,14 +115,6 @@ def implement(
             readable=True,
         ),
     ] = None,
-    branch_prefix: Annotated[
-        str,
-        typer.Option(
-            "--branch-prefix",
-            "-p",
-            help="Prefix for branch names (e.g., 'username/' for 'username/stage-1-models')",
-        ),
-    ] = "",
     dry_run: Annotated[
         bool,
         typer.Option("--dry-run", "-n", help="Show what would be done without executing"),
@@ -145,7 +131,7 @@ def implement(
     """Implement a design document as staged PRs.
 
     This command analyzes a design document and creates an implementation plan,
-    then executes each stage in parallel where possible, creating PRs for review.
+    then executes each stage sequentially, creating stacked PRs for review.
     """
     print_random_quote()
 
@@ -206,8 +192,7 @@ def implement(
     console.print(f"Design doc: [cyan]{design_doc}[/cyan]")
     console.print(f"TODO file: [cyan]{todo_file_path}[/cyan]")
     console.print(f"Base branch: [cyan]{base_branch}[/cyan]")
-    if branch_prefix:
-        console.print(f"Branch prefix: [cyan]{branch_prefix}[/cyan]")
+    console.print(f"Branch prefix: [cyan]{branch_prefix}[/cyan]")
     console.print(f"Model: [cyan]{model}[/cyan]")
 
     if dry_run:
@@ -303,7 +288,7 @@ def _run_implementation_phase(
     config: Config,
     resume: bool = False,
 ) -> list[int]:
-    """Run the implementation phase - execute stages by parallel group.
+    """Run the implementation phase - execute stages sequentially.
 
     Args:
         design_doc: Path to the design document.
@@ -324,18 +309,9 @@ def _run_implementation_phase(
         f"base_branch={base_branch}, resume={resume}"
     )
     todo = TodoFile.parse(todo_file)
-    parallel_groups = todo.get_parallel_groups_in_order()
 
-    if not parallel_groups:
-        logger.info("No parallel groups found, using sequential execution")
-        console.print("[yellow]No parallel groups found. Using sequential execution.[/yellow]")
-        parallel_groups = ["sequential"]
-
-    logger.info(f"Parallel groups: {parallel_groups}")
-    console.print(f"Parallel groups to process: [cyan]{', '.join(parallel_groups)}[/cyan]")
-
-    # Initialize the TODO updater for checkpointing
-    todo_updater = TodoUpdater(todo_file)
+    logger.info(f"Found {len(todo.stages)} stages to process sequentially")
+    console.print(f"Stages to process: [cyan]{len(todo.stages)}[/cyan] (sequential execution)")
 
     collected_prs: list[int] = []
 
@@ -368,168 +344,122 @@ def _run_implementation_phase(
 
     from smithers.models.stage import StageStatus
 
-    for group in parallel_groups:
-        logger.info(f"Processing parallel group: {group}")
-        print_header(f"PROCESSING PARALLEL GROUP: {group}")
-
-        all_stages_in_group = todo.get_stages_by_group().get(group, [])
-
-        # Filter out completed stages when in resume mode
-        if resume:
-            stages_in_group = [s for s in all_stages_in_group if s.status != StageStatus.COMPLETED]
-            skipped_count = len(all_stages_in_group) - len(stages_in_group)
-            if skipped_count > 0:
-                logger.info(f"Skipping {skipped_count} completed stage(s) in group {group}")
-                console.print(
-                    f"[dim]Skipping {skipped_count} completed stage(s) in group {group}[/dim]"
-                )
-        else:
-            stages_in_group = all_stages_in_group
-
-        if not stages_in_group:
-            logger.info(f"No stages to process for group {group}")
-            console.print(f"[dim]Group {group}: all stages completed, skipping[/dim]")
+    # Process each stage sequentially
+    for stage in todo.stages:
+        # Skip completed stages when in resume mode
+        if resume and stage.status == StageStatus.COMPLETED:
+            logger.info(f"Skipping completed Stage {stage.number}")
+            console.print(f"[dim]Skipping completed Stage {stage.number}[/dim]")
             continue
 
-        logger.info(f"Group {group} has {len(stages_in_group)} stages to process")
+        logger.info(f"Processing Stage {stage.number}")
+        print_header(f"PROCESSING STAGE {stage.number}: {stage.title}")
 
-        # Prepare worktrees and prompts for all stages
-        group_data: list[StageData] = []
+        logger.info(f"Preparing Stage {stage.number}: branch={stage.branch}")
+        console.print(f"Preparing Stage {stage.number} (branch: {stage.branch})")
+
+        # Determine base for worktree (depends_on is now the actual branch name)
+        worktree_base = git_service.get_branch_dependency_base(
+            stage.depends_on,
+            base_branch,
+        )
+
+        # Create worktree
+        worktree_path = git_service.create_worktree(stage.branch, worktree_base)
+
+        # Create prompt file
+        timestamp = datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
+        prompt_file = config.temp_dir / f"smithers-stage-{stage.number}-{timestamp}.prompt"
+        output_file = prompt_file.with_suffix(".prompt.output")
+        exit_file = prompt_file.with_suffix(".prompt.exit")
+
+        # Re-read TODO content for each stage (may have been updated)
         todo_content = todo_file.read_text()
 
-        for stage in stages_in_group:
-            logger.info(f"Preparing Stage {stage.number}: branch={stage.branch}")
-            console.print(f"Preparing Stage {stage.number} (branch: {stage.branch})")
+        # Generate implementation prompt
+        prompt = render_implementation_prompt(
+            stage_number=stage.number,
+            branch=stage.branch,
+            worktree_path=worktree_path,
+            worktree_base=worktree_base,
+            design_doc_path=design_doc,
+            design_content=design_content,
+            todo_file_path=todo_file,
+            todo_content=todo_content,
+        )
+        prompt_file.write_text(prompt)
 
-            # Determine base for worktree (depends_on is now the actual branch name)
-            worktree_base = git_service.get_branch_dependency_base(
-                stage.depends_on,
-                base_branch,
-            )
+        # Launch Claude session (Claude will mark stage as in_progress)
+        console.print(f"\nLaunching Claude session for Stage {stage.number}...")
 
-            # Create worktree
-            worktree_path = git_service.create_worktree(stage.branch, worktree_base)
+        command = claude_service.create_tmux_command(
+            prompt_file=prompt_file,
+            output_file=output_file,
+            exit_file=exit_file,
+        )
 
-            # Create prompt file
-            timestamp = datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
-            prompt_file = config.temp_dir / f"smithers-stage-{stage.number}-{timestamp}.prompt"
-            output_file = prompt_file.with_suffix(".prompt.output")
-            exit_file = prompt_file.with_suffix(".prompt.exit")
+        session = tmux_service.create_session(
+            name=stage.branch,
+            workdir=worktree_path,
+            command=command,
+        )
+        console.print(f"  Stage {stage.number}: tmux session '{session}'")
 
-            # Generate implementation prompt
-            prompt = render_implementation_prompt(
-                stage_number=stage.number,
-                branch=stage.branch,
-                worktree_path=worktree_path,
-                worktree_base=worktree_base,
-                design_doc_path=design_doc,
-                design_content=design_content,
-                todo_file_path=todo_file,
-                todo_content=todo_content,
-            )
-            prompt_file.write_text(prompt)
+        # Wait for session to complete
+        tmux_service.wait_for_sessions([session], poll_interval=config.poll_interval)
 
-            group_data.append(
-                {
-                    "stage": stage,
-                    "worktree_path": worktree_path,
-                    "prompt_file": prompt_file,
-                    "output_file": output_file,
-                    "exit_file": exit_file,
-                }
-            )
+        # Collect result
+        logger.info(f"Collecting result from Stage {stage.number}")
+        console.print("\nCollecting result...")
 
-        # Mark all stages in this group as in_progress before launching
-        stage_numbers = [data["stage"].number for data in group_data]
-        todo_updater.mark_stages_in_progress(stage_numbers)
-        console.print(f"Marked stages {stage_numbers} as in_progress")
+        if output_file.exists():
+            output = output_file.read_text()
+            logger.debug(f"Stage {stage.number} output ({len(output)} chars)")
 
-        # Launch all Claude sessions in parallel
-        console.print(f"\nLaunching {len(group_data)} Claude session(s) in parallel...")
+            if config.verbose:
+                print_header(f"OUTPUT FROM STAGE {stage.number}")
+                console.print(output)
 
-        sessions: list[str] = []
-        for data in group_data:
-            command = claude_service.create_tmux_command(
-                prompt_file=data["prompt_file"],
-                output_file=data["output_file"],
-                exit_file=data["exit_file"],
-            )
+            # Extract PR number using multiple strategies
+            from smithers.services.claude import ClaudeResult
 
-            session = tmux_service.create_session(
-                name=data["stage"].branch,
-                workdir=data["worktree_path"],
-                command=command,
-            )
-            sessions.append(session)
-            console.print(f"  Stage {data['stage'].number}: tmux session '{session}'")
+            stage_result = ClaudeResult(output=output, exit_code=0, success=True)
+            pr_num = stage_result.extract_pr_number()
+            logger.debug(f"Stage {stage.number} extracted PR number: {pr_num}")
 
-        # Wait for all sessions
-        tmux_service.wait_for_sessions(sessions, poll_interval=config.poll_interval)
-
-        # Collect results
-        logger.info("Collecting results from all stages")
-        console.print("\nCollecting results...")
-        for data in group_data:
-            stage = data["stage"]
-            output_file = data["output_file"]
-            prompt_file = data["prompt_file"]
-            exit_file = data["exit_file"]
-
-            if output_file.exists():
-                output = output_file.read_text()
-                logger.debug(f"Stage {stage.number} output ({len(output)} chars)")
-
-                if config.verbose:
-                    print_header(f"OUTPUT FROM STAGE {stage.number}")
-                    console.print(output)
-
-                # Extract PR number using multiple strategies
-                from smithers.services.claude import ClaudeResult
-
-                stage_result = ClaudeResult(output=output, exit_code=0, success=True)
-                pr_num = stage_result.extract_pr_number()
-                logger.debug(f"Stage {stage.number} extracted PR number: {pr_num}")
-
-                if pr_num:
-                    collected_prs.append(pr_num)
-                    logger.info(f"Stage {stage.number} complete: PR #{pr_num}")
-                    print_success(f"Stage {stage.number} complete. PR #{pr_num}")
-
-                    # Update TODO file with completed status and PR number
-                    todo_updater.update_stage_status(
-                        stage_number=stage.number,
-                        status=StageStatus.COMPLETED,
-                        pr_number=pr_num,
-                    )
-                else:
-                    msg = f"Could not extract PR number for Stage {stage.number}"
-                    logger.warning(msg)
-                    console.print(f"[yellow]Warning: {msg}[/yellow]")
-                    # Stage stays as in_progress - user needs to investigate
-                    console.print(
-                        f"[yellow]Stage {stage.number} kept as in_progress - "
-                        f"verify completion manually[/yellow]"
-                    )
+            if pr_num:
+                collected_prs.append(pr_num)
+                logger.info(f"Stage {stage.number} complete: PR #{pr_num}")
+                print_success(f"Stage {stage.number} complete. PR #{pr_num}")
+                # Claude has already updated TODO file status to completed
             else:
-                logger.warning(f"No output file found for Stage {stage.number}: {output_file}")
-                console.print(
-                    f"[yellow]Warning: No output file found for Stage {stage.number}[/yellow]"
-                )
+                msg = f"Could not extract PR number for Stage {stage.number}"
+                logger.warning(msg)
+                console.print(f"[yellow]Warning: {msg}[/yellow]")
                 # Stage stays as in_progress - user needs to investigate
                 console.print(
                     f"[yellow]Stage {stage.number} kept as in_progress - "
                     f"verify completion manually[/yellow]"
                 )
+        else:
+            logger.warning(f"No output file found for Stage {stage.number}: {output_file}")
+            console.print(
+                f"[yellow]Warning: No output file found for Stage {stage.number}[/yellow]"
+            )
+            # Stage stays as in_progress - user needs to investigate
+            console.print(
+                f"[yellow]Stage {stage.number} kept as in_progress - "
+                f"verify completion manually[/yellow]"
+            )
 
-            # Cleanup temp files
-            for f in [prompt_file, output_file, exit_file]:
-                if f.exists():
-                    f.unlink()
+        # Cleanup temp files
+        for f in [prompt_file, output_file, exit_file]:
+            if f.exists():
+                f.unlink()
 
-        # Cleanup worktrees for this group
-        for data in group_data:
-            git_service.cleanup_worktree(data["stage"].branch)
+        # Cleanup worktree for this stage
+        git_service.cleanup_worktree(stage.branch)
 
-        print_success(f"Group {group} complete.")
+        print_success(f"Stage {stage.number} complete.")
 
     return collected_prs

@@ -51,8 +51,9 @@ def plan(
     logger.info(f"  verbose: {verbose}")
     logger.info("=" * 60)
 
-    # Set up configuration
+    # Set up configuration (branch_prefix not used in interactive planning mode)
     config = Config(
+        branch_prefix="",
         model=model,
         verbose=verbose,
     )

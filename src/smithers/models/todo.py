@@ -96,45 +96,9 @@ class TodoFile:
             notes=notes,
         )
 
-    def get_stages_by_group(self) -> dict[str, list[Stage]]:
-        """Get stages organized by parallel group."""
-        groups: dict[str, list[Stage]] = {}
-        for stage in self.stages:
-            group = stage.parallel_group
-            if group not in groups:
-                groups[group] = []
-            groups[group].append(stage)
-        return groups
-
-    def get_parallel_groups_in_order(self) -> list[str]:
-        """Get unique parallel groups in the order they appear."""
-        seen: set[str] = set()
-        groups: list[str] = []
-        for stage in self.stages:
-            if stage.parallel_group not in seen:
-                seen.add(stage.parallel_group)
-                groups.append(stage.parallel_group)
-        return groups
-
-    def get_stage_by_number(self, number: int) -> Stage | None:
-        """Get a stage by its number."""
-        for stage in self.stages:
-            if stage.number == number:
-                return stage
-        return None
-
-    def get_stage_branch(self, stage_number: int) -> str | None:
-        """Get the branch name for a stage number."""
-        stage = self.get_stage_by_number(stage_number)
-        return stage.branch if stage else None
-
     def get_completed_stages(self) -> list[Stage]:
         """Get all stages with completed status."""
         return [s for s in self.stages if s.status == StageStatus.COMPLETED]
-
-    def get_incomplete_stages(self) -> list[Stage]:
-        """Get all stages that are not completed (pending or in_progress)."""
-        return [s for s in self.stages if s.status != StageStatus.COMPLETED]
 
 
 def _parse_stage_line(line: str, data: dict[str, object]) -> dict[str, object]:

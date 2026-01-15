@@ -8,13 +8,15 @@ from pathlib import Path
 class Config:
     """Runtime configuration for Smithers operations."""
 
+    # Required fields (no defaults) - must come first
+    branch_prefix: str  # e.g., "username/" for branches like "username/stage-1-models"
+
     # Claude settings
     model: str = "claude-opus-4-5-20251101"
     dangerously_skip_permissions: bool = True
 
     # Git settings
     base_branch: str = "main"
-    branch_prefix: str = ""  # e.g., "username/" for branches like "username/stage-1-models"
 
     # Tmux settings
     poll_interval: float = 5.0  # seconds between session status checks
@@ -39,14 +41,6 @@ class Config:
 
 # Global config instance (can be overridden via CLI)
 _config: Config | None = None
-
-
-def get_config() -> Config:
-    """Get the current configuration, creating a default if none exists."""
-    global _config  # noqa: PLW0603
-    if _config is None:
-        _config = Config()
-    return _config
 
 
 def set_config(config: Config) -> None:

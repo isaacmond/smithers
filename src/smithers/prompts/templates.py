@@ -39,10 +39,60 @@ NEVER leave conflict markers in the code. NEVER skip conflict resolution. ALWAYS
 
 QUALITY_CHECKS_SECTION = """
 ### Quality Checks (REQUIRED)
-Before pushing changes, run ALL quality checks:
-- bin/run_lint.sh
-- bin/run_type_check.sh
-- bin/run_test.sh
+Before pushing changes, run ALL quality checks (e.g. lint, type check, test)
 
 Fix ALL issues. Do NOT push or declare completion until all pass.
+"""
+
+SELF_HEALING_SECTION = """
+### Error Handling & Retries (REQUIRED)
+If any command or operation fails, you MUST handle it:
+
+1. **Diagnose the error**: Is it permissions? Network? Syntax? Rate limit?
+2. **Retry with alternative approach**: Try different flags, commands, or strategies
+3. **Maximum 5 attempts**: Make up to 5 attempts before declaring failure
+4. **Adaptive waiting**: For rate limits, wait 30-60 seconds before retry
+
+Common retryable scenarios:
+- `gh` CLI errors → try with different flags or wait for rate limit
+- Git push rejected → pull/merge first, then retry
+- CI flaky → re-run the check: `gh run rerun <run_id> --failed`
+- Network timeout → wait and retry
+
+Only report failure in your JSON output after exhausting all 5 attempts.
+"""
+
+STRICT_JSON_SECTION = """
+### Output Format (CRITICAL)
+You MUST output valid JSON at the END of your response between the delimiters shown below.
+
+**Requirements:**
+- JSON must be valid and parseable
+- All fields must be present (use null for unknown values)
+- If you encounter an unrecoverable error, still output JSON with:
+  - Set completion/done fields to false
+  - Add "error": "<description of what went wrong>"
+- Failure to output valid JSON is a critical error
+"""
+
+TODO_STATE_SECTION = """
+### TODO File State Management (REQUIRED)
+You own the TODO file state for your stage. At specific points:
+
+**At START of your session:**
+1. Read the TODO file (path given above)
+2. Find your stage (number given above)
+3. Update its **Status** from `pending` to `in_progress`
+4. Save the file
+
+**At END of your session (success):**
+1. Update your stage's **Status** to `completed`
+2. Fill in the **PR** field with the PR number
+3. Check off completed acceptance criteria
+4. Save the file
+
+**At END of your session (failure after 5 retries):**
+1. Update your stage's **Status** to `failed`
+2. Add a note explaining what went wrong
+3. Save the file
 """

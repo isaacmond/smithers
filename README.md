@@ -16,13 +16,13 @@ Like Mr. Burns' ever-faithful assistant, Smithers diligently handles the details
 
 ## Features
 
-- **Implement Mode**: Analyzes design documents and creates staged PRs with parallel execution
-- **Fix Mode**: Loops until all review comments are addressed and CI passes
+- **Implement Mode**: Analyzes design documents and creates stacked PRs executed sequentially
+- **Fix Mode**: Loops until all review comments are addressed and CI passes (PRs processed in parallel)
 - **Plan Mode**: Interactively create implementation plans with Claude before implementing
 - **Streaming Output**: See real-time output while sessions run in the background; Ctrl+C to detach without stopping
 - **Session Management**: Rejoin running tmux sessions after detaching or disconnecting
 - **Checkpoint & Resume**: Automatically saves progress; resume interrupted runs with `--resume`
-- **Parallel Execution**: Uses git worktrees and tmux for concurrent stage implementation
+- **Git Worktrees**: Uses isolated worktrees for clean implementation
 - **Claude AI Powered**: Leverages Claude Code CLI for intelligent code generation
 
 ## Installation
@@ -106,14 +106,32 @@ Smithers runs long operations in background tmux sessions while streaming output
 # List all running smithers tmux sessions
 smithers sessions
 
-# Rejoin the most recent session
+# Rejoin the most recent session (streaming mode with Ctrl+C to detach)
 smithers rejoin
 
 # Rejoin a specific session
 smithers rejoin smithers-impl-my-feature
 
+# Rejoin with full terminal control (Ctrl+B D to detach)
+smithers rejoin --attach
+
 # List sessions via rejoin command
 smithers rejoin --list
+
+# Kill the most recent session
+smithers kill
+
+# Kill a specific session
+smithers kill smithers-impl-my-feature
+
+# Kill all running smithers sessions
+smithers kill --all
+
+# Also remove git worktrees created by the session
+smithers kill --cleanup-worktrees
+
+# Skip confirmation prompt
+smithers kill --force
 ```
 
 ### Update Smithers
@@ -147,10 +165,10 @@ smithers update
 
 1. **Planning Phase**: Claude analyzes the design document and creates a TODO file with implementation stages (or uses an existing plan file)
 2. **Implementation Phase**:
-   - Stages are grouped by parallel group
+   - Stages are executed sequentially (one at a time)
    - Git worktrees are created for each stage
-   - Claude runs in parallel tmux sessions
-   - PRs are created for each stage
+   - Claude runs in a tmux session for each stage
+   - Stacked PRs are created for each stage
    - **Checkpointing**: Stage status and PR numbers are saved to the TODO file as each stage completes
 3. **Transition**: Automatically transitions to Fix mode with created PRs
 

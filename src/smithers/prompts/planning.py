@@ -12,7 +12,7 @@ Location: {design_doc_path}
 {design_content}
 
 ## Your Task
-Analyze this design document and create a detailed implementation plan. You will output this plan as a TODO file that will guide subsequent implementation stages.
+Carefully analyze this design document and create a very detailed implementation plan. You will output this plan as a TODO file that will guide subsequent implementation stages.
 {branch_prefix_instruction}
 ### Create the TODO File
 Create a file at: {todo_file_path}
@@ -23,14 +23,13 @@ The TODO file should have this structure:
 # Implementation Plan: [Feature Name]
 
 ## Overview
-[Brief description of what we're implementing]
+[Detailed description of what we're implementing]
 
 ## Stages
 
 ### Stage 1: [Title]
 - **Status**: pending
 - **Branch**: {branch_example_1}
-- **Parallel group**: [group_id - stages with same group_id run in parallel]
 - **Depends on**: none (or the actual branch name of the dependency, e.g., {branch_example_1})
 - **PR**: (to be filled in)
 - **Description**: [Detailed description of what this stage implements]
@@ -44,7 +43,6 @@ The TODO file should have this structure:
 ### Stage 2: [Title]
 - **Status**: pending
 - **Branch**: {branch_example_2}
-- **Parallel group**: [group_id]
 - **Depends on**: {branch_example_1} (use the actual branch name, NOT "Stage 1")
 - **PR**: (to be filled in)
 - **Description**: [Detailed description]
@@ -62,54 +60,44 @@ The TODO file should have this structure:
 IMPORTANT: For the "Depends on" field, use the actual branch name (e.g., "{branch_example_1}"), NOT "Stage 1". Use "none" if there is no dependency.
 
 ### Guidelines
-- Break the work into 2-6 logical stages
+- Break the work into logical stages that are executed SEQUENTIALLY (one at a time)
 - Each stage should be a reviewable, self-contained PR
 - Specify dependencies clearly (which stages must come before)
 - Be specific about which files to create/modify
 - Include clear acceptance criteria for each stage
 - Consider: database migrations first, then models, then services, then handlers, then tests
+- Stages will be implemented one at a time in order, with each PR stacking on the previous
 
-### Parallel Groups
-Stages are executed by parallel group. Assign the **Parallel group** field to control execution:
-- Stages with the SAME group ID (e.g., "1", "2") run IN PARALLEL in separate git worktrees
-- Stages with DIFFERENT group IDs run SEQUENTIALLY (group 1 completes before group 2 starts)
-- Use "sequential" as the group ID for stages that MUST run alone (e.g., due to complex dependencies)
-- Independent stages that don't touch the same files can share a group ID
-- Stages that depend on each other MUST have different group IDs
-
-Example:
-- Stage 1 (models): Parallel group: 1
-- Stage 2 (API endpoints): Parallel group: 1  (runs in parallel with Stage 1)
-- Stage 3 (integration): Parallel group: 2    (waits for group 1 to complete)
-
-### Output
-After creating the TODO file, output the following JSON block at the END of your response:
+### Output (CRITICAL - Valid JSON Required)
+After creating the TODO file, output the following JSON block at the END of your response.
+You MUST output valid, parseable JSON. All fields are required.
 
 ---JSON_OUTPUT---
 {{
   "todo_file_created": "{todo_file_path}",
   "num_stages": <number>,
-  "execution_plan": [
-    {{
-      "group": "<group_id>",
-      "stages": [
-        {{"number": 1, "branch": "<branch-name>", "base": "<base-branch-or-none>"}},
-        {{"number": 2, "branch": "<branch-name>", "base": "<base-branch-or-none>"}}
-      ]
-    }},
-    {{
-      "group": "<next_group_id>",
-      "stages": [
-        {{"number": 3, "branch": "<branch-name>", "base": "<dependency-branch-name>"}}
-      ]
-    }}
-  ]
+  "stages": [
+    {{"number": 1, "branch": "<branch-name>", "base": "<base-branch-or-none>"}},
+    {{"number": 2, "branch": "<branch-name>", "base": "<dependency-branch-name>"}},
+    {{"number": 3, "branch": "<branch-name>", "base": "<dependency-branch-name>"}}
+  ],
+  "error": null
 }}
 ---END_JSON---
 
-The execution_plan lists groups in execution order. Each group contains stages that run in parallel.
 - "base" should be "main" (or the configured base branch) for stages with no dependency
 - "base" should be the actual branch name for stages that depend on another stage
+
+If you encounter an error, still output JSON:
+
+---JSON_OUTPUT---
+{{
+  "todo_file_created": null,
+  "num_stages": 0,
+  "stages": [],
+  "error": "<description of what went wrong>"
+}}
+---END_JSON---
 
 ## Begin
 Analyze the design and create the implementation plan."""
@@ -119,7 +107,7 @@ def render_planning_prompt(
     design_doc_path: Path,
     design_content: str,
     todo_file_path: Path,
-    branch_prefix: str = "",
+    branch_prefix: str,
 ) -> str:
     """Render the planning prompt.
 
@@ -127,24 +115,18 @@ def render_planning_prompt(
         design_doc_path: Path to the design document
         design_content: Content of the design document
         todo_file_path: Path where the TODO file should be created
-        branch_prefix: Optional prefix for branch names (e.g., "username/")
+        branch_prefix: Prefix for branch names (e.g., "username/")
 
     Returns:
         The rendered prompt string
     """
-    # Generate branch examples based on prefix
-    if branch_prefix:
-        branch_example_1 = f"{branch_prefix}stage-1-models"
-        branch_example_2 = f"{branch_prefix}stage-2-api"
-        branch_prefix_instruction = f"""
+    branch_example_1 = f"{branch_prefix}stage-1-models"
+    branch_example_2 = f"{branch_prefix}stage-2-api"
+    branch_prefix_instruction = f"""
 ### Branch Naming Convention
 **IMPORTANT**: All branch names MUST start with the prefix `{branch_prefix}`.
 For example: `{branch_prefix}stage-1-models`, `{branch_prefix}stage-2-api`, etc.
 """
-    else:
-        branch_example_1 = "stage-1-models"
-        branch_example_2 = "stage-2-api"
-        branch_prefix_instruction = ""
 
     return render_template(
         PLANNING_PROMPT_TEMPLATE,

@@ -1,5 +1,6 @@
 """Tmux session management service."""
 
+import contextlib
 import os
 import platform
 import selectors
@@ -173,7 +174,8 @@ class TmuxService:
         print_info(
             f"Running smithers in tmux session '{session}' so you can reattach if disconnected."
         )
-        console.print("Reconnect anytime with: [cyan]smithers rejoin[/cyan]")
+        console.print("[dim]Press Ctrl+C to detach without stopping the session[/dim]")
+        console.print("[dim]Reconnect anytime with:[/dim] [cyan]smithers rejoin[/cyan]")
         console.print()
         # Flush stdout to ensure messages appear before we enter the streaming loop
         sys.stdout.flush()
@@ -275,23 +277,32 @@ class TmuxService:
         session: str,
         log_file: Path,
         exit_code_file: Path,
-        session_check_interval: float = 2.0,
+        exit_check_interval: float = 0.1,
+        fallback_session_check_interval: float = 10.0,
     ) -> int:
         """Stream output from log file until session completes or user detaches.
 
         Uses `tail -f` for efficient real-time streaming with minimal latency.
+        Detects session completion by watching for exit_code_file to appear,
+        avoiding expensive subprocess calls.
 
         Args:
             session: The tmux session name
             log_file: Path to the output log file
             exit_code_file: Path to the exit code file
-            session_check_interval: Seconds between session existence checks
+            exit_check_interval: Seconds between exit file checks (cheap file stat)
+            fallback_session_check_interval: Seconds between tmux session checks
+                (expensive subprocess, fallback only)
 
         Returns:
             The exit code from the session (0 if detached by user)
         """
         detached = False
         tail_proc: subprocess.Popen[bytes] | None = None
+
+        # Remove stale exit code file from previous runs
+        with contextlib.suppress(OSError):
+            exit_code_file.unlink(missing_ok=True)
 
         def handle_sigint(_signum: int, _frame: object) -> None:
             nonlocal detached
@@ -304,16 +315,17 @@ class TmuxService:
             # Wait for log file to be created (with timeout)
             wait_start = time.time()
             while not log_file.exists() and time.time() - wait_start < 5.0:
-                if not self.session_exists(session):
+                # Check exit_code_file first (cheap), then session (expensive) as fallback
+                if exit_code_file.exists() or not self.session_exists(session):
                     logger.error(f"Session '{session}' exited before output was available")
-                    return 1
+                    return self._read_exit_code(exit_code_file) if exit_code_file.exists() else 1
                 time.sleep(0.05)
 
             if not log_file.exists():
                 logger.warning(f"Log file not created after 5s: {log_file}")
-                # Fall back to waiting for session
-                while self.session_exists(session) and not detached:
-                    time.sleep(session_check_interval)
+                # Fall back to waiting for session via file-based detection
+                while not exit_code_file.exists() and not detached:
+                    time.sleep(exit_check_interval)
                 if detached:
                     print_detach_message(session)
                     return 0
@@ -336,16 +348,19 @@ class TmuxService:
             sel = selectors.DefaultSelector()
             sel.register(tail_proc.stdout, selectors.EVENT_READ)  # type: ignore[arg-type]
 
+            last_exit_check = time.time()
             last_session_check = time.time()
 
             while not detached:
-                # Wait for data with a short timeout
-                events = sel.select(timeout=0.05)
+                # Wait for data with minimal timeout for low latency
+                # 1ms is responsive enough for real-time streaming while avoiding busy-wait
+                events = sel.select(timeout=0.001)
 
                 for _key, _ in events:
                     # Use os.read() for truly non-blocking reads
+                    # Large buffer (64KB) for high throughput when data is available
                     try:
-                        data = os.read(stdout_fd, 8192)
+                        data = os.read(stdout_fd, 65536)
                         if data:
                             sys.stdout.buffer.write(data)
                             sys.stdout.buffer.flush()
@@ -353,21 +368,26 @@ class TmuxService:
                         # No data available right now, continue
                         pass
 
-                # Periodically check if session is still running (expensive operation)
                 now = time.time()
-                if now - last_session_check >= session_check_interval:
+
+                # Primary detection: check if exit_code_file exists (cheap file stat, no subprocess)
+                if now - last_exit_check >= exit_check_interval:
+                    last_exit_check = now
+                    if exit_code_file.exists():
+                        logger.debug("Exit code file detected, session complete")
+                        # Session ended - drain any remaining output
+                        self._drain_and_cleanup_tail(sel, tail_proc, stdout_fd)
+                        tail_proc = None
+                        break
+
+                # Fallback detection: check tmux session (expensive subprocess, infrequent)
+                # This handles edge cases where exit_code_file isn't written
+                if now - last_session_check >= fallback_session_check_interval:
                     last_session_check = now
                     if not self.session_exists(session):
-                        # Session ended - drain any remaining output
-                        sel.unregister(tail_proc.stdout)  # type: ignore[arg-type]
-                        tail_proc.stdout.close()  # type: ignore[union-attr]
-                        tail_proc.terminate()
-                        tail_proc.wait()
+                        logger.debug("Tmux session no longer exists (fallback check)")
+                        self._drain_and_cleanup_tail(sel, tail_proc, stdout_fd)
                         tail_proc = None
-
-                        # Read any final content directly from the file
-                        # (tail may not have caught the very last writes)
-                        time.sleep(0.1)  # Brief pause for final file writes
                         break
 
             sel.close()
@@ -394,26 +414,60 @@ class TmuxService:
                     tail_proc.kill()
                     tail_proc.wait()
 
-    def _read_exit_code(self, exit_code_file: Path) -> int:
+    def _drain_and_cleanup_tail(
+        self,
+        sel: selectors.BaseSelector,
+        tail_proc: subprocess.Popen[bytes],
+        stdout_fd: int,
+    ) -> None:
+        """Drain remaining output from tail and clean up.
+
+        Args:
+            sel: The selector watching tail's stdout
+            tail_proc: The tail subprocess
+            stdout_fd: File descriptor for tail's stdout
+        """
+        # Brief pause for final file writes
+        time.sleep(0.05)
+
+        # Drain any remaining buffered output
+        try:
+            while True:
+                data = os.read(stdout_fd, 65536)
+                if not data:
+                    break
+                sys.stdout.buffer.write(data)
+                sys.stdout.buffer.flush()
+        except BlockingIOError:
+            pass
+
+        sel.unregister(tail_proc.stdout)  # type: ignore[arg-type]
+        tail_proc.stdout.close()  # type: ignore[union-attr]
+        tail_proc.terminate()
+        tail_proc.wait()
+
+    def _read_exit_code(self, exit_code_file: Path, max_wait: float = 0.5) -> int:
         """Read the exit code from the marker file.
 
         Args:
             exit_code_file: Path to the exit code file
+            max_wait: Maximum seconds to wait for file to be readable
 
         Returns:
             The exit code, or 1 if not found
         """
-        # Give time for the file to be written (up to 3 seconds)
-        for _ in range(30):
+        # Brief retry loop in case file was just created but not yet written
+        start = time.time()
+        while time.time() - start < max_wait:
             if exit_code_file.exists():
                 try:
                     content = exit_code_file.read_text().strip()
                     if content.isdigit():
                         return int(content)
+                    # File exists but content not yet valid, retry briefly
                 except OSError:
                     pass
-                break
-            time.sleep(0.1)
+            time.sleep(0.01)  # 10ms between retries
 
         logger.warning(f"Could not read exit code from {exit_code_file}")
         return 1
@@ -692,7 +746,9 @@ class TmuxService:
             return []  # tmux not installed
 
     def attach_session(self, session_name: str) -> int:
-        """Attach to an existing tmux session.
+        """Attach to an existing tmux session (raw tmux attach).
+
+        This gives full terminal control but uses Ctrl+B D to detach.
 
         Args:
             session_name: Name of the session to attach to.
@@ -712,3 +768,23 @@ class TmuxService:
             check=False,
         )
         return result.returncode
+
+    def get_session_worktrees(self, session: str) -> list[str]:
+        """Get worktrees tracked for a session.
+
+        Args:
+            session: The sanitized session name
+
+        Returns:
+            List of branch names for tracked worktrees
+        """
+        session = self.sanitize_session_name(session)
+        session_dir = DEFAULT_SESSIONS_DIR / session
+        worktrees_file = session_dir / "worktrees.txt"
+        if not worktrees_file.exists():
+            return []
+        try:
+            content = worktrees_file.read_text().strip()
+            return [b for b in content.split("\n") if b]
+        except OSError:
+            return []

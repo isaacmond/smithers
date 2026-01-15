@@ -6,6 +6,7 @@ from rich.console import Console
 from smithers import __version__
 from smithers.commands.fix import fix
 from smithers.commands.implement import implement
+from smithers.commands.kill import kill
 from smithers.commands.plan import plan
 from smithers.commands.quote import quote
 from smithers.commands.rejoin import rejoin
@@ -33,6 +34,7 @@ app.command(name="implement")(implement)
 app.command(name="fix")(fix)
 app.command(name="rejoin")(rejoin)
 app.command(name="sessions")(sessions)
+app.command(name="kill")(kill)
 app.command(name="update")(update)
 # Backwards-compatible alias for self-update
 app.command(name="update-self", help="Alias for update")(update)

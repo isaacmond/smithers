@@ -52,18 +52,6 @@ class ClaudeResult:
                 return int(digits.group())
         return None
 
-    def has_flag(self, flag: str) -> bool:
-        """Check if a flag is set to true in the output.
-
-        Args:
-            flag: The flag to check (e.g., "ALL_DONE")
-
-        Returns:
-            True if the flag is set to true
-        """
-        value = self.extract_value(flag)
-        return value is not None and value.lower() == "true"
-
     def extract_json(self) -> dict[str, Any] | None:
         """Extract structured JSON from the output.
 

@@ -5,10 +5,12 @@ from pathlib import Path
 from smithers.prompts.templates import (
     MERGE_CONFLICT_SECTION,
     QUALITY_CHECKS_SECTION,
+    SELF_HEALING_SECTION,
+    STRICT_JSON_SECTION,
     render_template,
 )
 
-FIX_PLANNING_PROMPT_TEMPLATE = """You are creating a fix plan to address review comments AND CI/CD failures on pull requests.
+FIX_PLANNING_PROMPT_TEMPLATE = """You are creating a fix plan to address review comments, CI/CD failures and merge issues on pull requests.
 
 ## Design Document (for context)
 Location: {design_doc_path}
@@ -30,7 +32,9 @@ Location: {design_doc_path}
      - gh run view <run_id> --log-failed
    - Extract the specific test failures, lint errors, or type check errors
 
-3. Create a TODO file at: {todo_file_path}
+3. Check for merge conflicts in each PR
+
+4. Create a TODO file at: {todo_file_path}
 
 The TODO file should have this structure:
 
@@ -84,14 +88,27 @@ Addressing review comments and CI/CD failures on PRs: {pr_numbers}
 - Group by PR, with CI failures listed before review comments
 - Be specific about what action is needed for each item
 
-### Output
-After creating the TODO file, output the following JSON block at the END of your response:
+### Output (CRITICAL - Valid JSON Required)
+After creating the TODO file, output the following JSON block at the END of your response.
+You MUST output valid, parseable JSON. All fields are required.
 
 ---JSON_OUTPUT---
 {{
   "todo_file_created": "{todo_file_path}",
   "num_comments": <total number of unresolved comments across all PRs>,
-  "num_ci_failures": <total number of failing CI checks across all PRs>
+  "num_ci_failures": <total number of failing CI checks across all PRs>,
+  "error": null
+}}
+---END_JSON---
+
+If you encounter an error, still output JSON:
+
+---JSON_OUTPUT---
+{{
+  "todo_file_created": null,
+  "num_comments": 0,
+  "num_ci_failures": 0,
+  "error": "<description of what went wrong>"
 }}
 ---END_JSON---
 
@@ -120,7 +137,7 @@ Location: {todo_file_path}
 
 ## Your Task
 Address all issues for PR #{pr_number}.
-
+{self_healing_section}
 **CRITICAL**: You MUST complete ALL steps below, even if there are 0 comments to address.
 The fix process is not complete until:
 1. Base branch is merged in (origin/main)
@@ -152,7 +169,7 @@ If CI is failing, you MUST fix it:
 - Fix test failures by correcting the code or updating tests
 - Fix lint errors by reformatting or fixing style issues
 - Fix type errors by correcting type annotations or logic
-- Run local checks to verify: bin/run_lint.sh, bin/run_type_check.sh, bin/run_test.sh
+- Run local checks to verify (e.g. lint, type check, test)
 - Commit and push the fixes
 - Verify CI passes before moving to review comments
 
@@ -196,6 +213,7 @@ After pushing, verify CI/CD status:
 - Use: gh pr checks {pr_number}
 - If any checks are FAILING, fix them
 {merge_conflict_section}
+{strict_json_section}
 ## Output Format
 After processing PR #{pr_number}, output the following JSON block at the END of your response:
 
@@ -207,7 +225,8 @@ After processing PR #{pr_number}, output the following JSON block at the END of 
   "unresolved_before": <count of unresolved comments before processing>,
   "addressed": <count of comments addressed>,
   "ci_status": "<passing|failing|pending>",
-  "done": <true ONLY if: base_branch_merged=true AND merge_conflicts!="unresolved" AND unresolved_before=0 AND ci_status="passing">
+  "done": <true ONLY if all conditions below are met>,
+  "error": null
 }}
 ---END_JSON---
 
@@ -216,6 +235,21 @@ After processing PR #{pr_number}, output the following JSON block at the END of 
 - There are NO unresolved merge conflicts
 - There are ZERO unresolved comments (`unresolved_before` after your processing should be 0)
 - CI status is "passing"
+
+If you fail after 5 retry attempts, output:
+
+---JSON_OUTPUT---
+{{
+  "pr_number": {pr_number},
+  "base_branch_merged": false,
+  "merge_conflicts": "unresolved",
+  "unresolved_before": <count>,
+  "addressed": 0,
+  "ci_status": "failing",
+  "done": false,
+  "error": "<description of what went wrong after 5 attempts>"
+}}
+---END_JSON---
 
 ## Begin
 Process PR #{pr_number} now."""
@@ -282,4 +316,6 @@ def render_fix_prompt(
         todo_content=todo_content,
         quality_checks_section=QUALITY_CHECKS_SECTION,
         merge_conflict_section=MERGE_CONFLICT_SECTION,
+        self_healing_section=SELF_HEALING_SECTION,
+        strict_json_section=STRICT_JSON_SECTION,
     )

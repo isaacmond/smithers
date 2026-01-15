@@ -127,6 +127,7 @@ def fix(
 
     # Set up configuration
     config = Config(
+        branch_prefix="",  # Not used by fix command (works on existing PRs)
         model=model,
         dry_run=dry_run,
         verbose=verbose,
@@ -368,7 +369,6 @@ def _run_fix_iteration(
     all_ci_passing = True
     all_base_merged = True
     all_merge_conflicts_resolved = True
-    combined_output = ""
 
     for data in group_data:
         pr_num = data["pr_number"]
@@ -379,7 +379,6 @@ def _run_fix_iteration(
 
         if output_file.exists():
             output = output_file.read_text()
-            combined_output += output
             logger.debug(f"PR #{pr_num} output ({len(output)} chars)")
 
             if config.verbose:

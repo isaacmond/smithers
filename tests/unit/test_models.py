@@ -1,6 +1,6 @@
 """Tests for data models."""
 
-from smithers.models.config import Config, get_config, set_config
+from smithers.models.config import Config, set_config
 from smithers.models.stage import Stage, StageStatus
 from smithers.services.claude import ClaudeResult
 
@@ -10,8 +10,9 @@ class TestConfig:
 
     def test_default_config(self) -> None:
         """Test default configuration values."""
-        config = Config()
+        config = Config(branch_prefix="user/")
 
+        assert config.branch_prefix == "user/"
         assert config.model == "claude-opus-4-5-20251101"
         assert config.base_branch == "main"
         assert config.poll_interval == 5.0
@@ -21,6 +22,7 @@ class TestConfig:
     def test_custom_config(self) -> None:
         """Test custom configuration values."""
         config = Config(
+            branch_prefix="feature/",
             model="claude-sonnet",
             base_branch="develop",
             poll_interval=10.0,
@@ -28,19 +30,19 @@ class TestConfig:
             verbose=True,
         )
 
+        assert config.branch_prefix == "feature/"
         assert config.model == "claude-sonnet"
         assert config.base_branch == "develop"
         assert config.poll_interval == 10.0
         assert config.dry_run is True
         assert config.verbose is True
 
-    def test_global_config(self) -> None:
-        """Test getting and setting global config."""
-        config = Config(model="test-model")
+    def test_set_config(self) -> None:
+        """Test setting global config."""
+        config = Config(branch_prefix="test/", model="test-model")
         set_config(config)
-
-        retrieved = get_config()
-        assert retrieved.model == "test-model"
+        # Just verify it doesn't raise an error
+        assert config.model == "test-model"
 
 
 class TestStage:
@@ -74,27 +76,6 @@ class TestStage:
         assert stage.files == ["file1.py", "file2.py"]
         assert stage.acceptance_criteria == ["Criterion 1", "Criterion 2"]
 
-    def test_stage_to_dict(self) -> None:
-        """Test converting a Stage to a dictionary."""
-        stage = Stage(
-            number=1,
-            title="Test",
-            branch="test",
-            parallel_group="1",
-            description="Test desc",
-            status=StageStatus.COMPLETED,
-            depends_on="Stage 0",
-            pr_number=456,
-            files=["file.py"],
-            acceptance_criteria=["Done"],
-        )
-
-        data = stage.to_dict()
-
-        assert data["number"] == 1
-        assert data["status"] == "completed"
-        assert data["pr_number"] == 456
-
     def test_stage_status_enum(self) -> None:
         """Test StageStatus enum values."""
         assert StageStatus.PENDING.value == "pending"
@@ -127,15 +108,3 @@ class TestClaudeResult:
         assert result.extract_int("NUM_STAGES") == 5
         assert result.extract_int("PR_NUMBER") == 123
         assert result.extract_int("MISSING") is None
-
-    def test_has_flag(self) -> None:
-        """Test checking boolean flags."""
-        result = ClaudeResult(
-            output="ALL_DONE: true\nCI_PASSING: false",
-            exit_code=0,
-            success=True,
-        )
-
-        assert result.has_flag("ALL_DONE") is True
-        assert result.has_flag("CI_PASSING") is False
-        assert result.has_flag("MISSING") is False

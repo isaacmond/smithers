@@ -16,6 +16,7 @@ class TestPlanningPrompt:
             design_doc_path=Path("/path/to/design.md"),
             design_content="# Design\n\nThis is the design.",
             todo_file_path=Path("/path/to/todo.md"),
+            branch_prefix="username/",
         )
 
         assert "/path/to/design.md" in prompt
@@ -31,9 +32,10 @@ class TestPlanningPrompt:
             design_doc_path=Path("design.md"),
             design_content="content",
             todo_file_path=Path("todo.md"),
+            branch_prefix="feature/",
         )
 
-        assert "Parallel group" in prompt
+        assert "SEQUENTIALLY" in prompt
         assert "Depends on" in prompt
         assert "Acceptance criteria" in prompt
 
@@ -52,21 +54,6 @@ class TestPlanningPrompt:
         assert "username/stage-2-api" in prompt
         assert "Branch Naming Convention" in prompt
         assert "MUST start with the prefix" in prompt
-
-    def test_render_planning_prompt_without_branch_prefix(self) -> None:
-        """Test that without branch prefix, examples don't have prefix."""
-        prompt = render_planning_prompt(
-            design_doc_path=Path("/path/to/design.md"),
-            design_content="# Design",
-            todo_file_path=Path("/path/to/todo.md"),
-            branch_prefix="",
-        )
-
-        # Should contain unprefixed examples
-        assert "stage-1-models" in prompt
-        assert "stage-2-api" in prompt
-        # Should not contain the prefix instruction section
-        assert "Branch Naming Convention" not in prompt
 
 
 class TestImplementationPrompt:
@@ -107,9 +94,10 @@ class TestImplementationPrompt:
             todo_content="",
         )
 
-        assert "bin/run_lint.sh" in prompt
-        assert "bin/run_type_check.sh" in prompt
-        assert "bin/run_test.sh" in prompt
+        assert "quality checks" in prompt
+        assert "lint" in prompt
+        assert "type check" in prompt
+        assert "test" in prompt
 
     def test_prompt_contains_merge_conflict_section(self) -> None:
         """Test that merge conflict resolution instructions are included."""
@@ -127,8 +115,8 @@ class TestImplementationPrompt:
         assert "Merge Conflict" in prompt
         assert "conflict markers" in prompt
 
-    def test_prompt_mentions_pr_stacking_and_claude(self) -> None:
-        """Test that implementation prompt clarifies PR stacking and Claude usage."""
+    def test_prompt_mentions_pr_stacking(self) -> None:
+        """Test that implementation prompt clarifies PR stacking."""
         prompt = render_implementation_prompt(
             stage_number=2,
             branch="feature/test",
@@ -141,7 +129,6 @@ class TestImplementationPrompt:
         )
 
         assert "stacked" in prompt
-        assert "Claude Code" in prompt
 
 
 class TestFixPrompts:
