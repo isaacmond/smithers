@@ -134,7 +134,11 @@ smithers kill --cleanup-worktrees
 smithers kill --force
 ```
 
-### Update Smithers
+### Updates
+
+Smithers automatically updates itself when a new minor or patch version is available. When you run any command, it checks for updates and installs them in the background.
+
+For major version updates, you'll see a warning and can manually update:
 
 ```bash
 smithers update

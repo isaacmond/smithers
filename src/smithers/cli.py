@@ -36,8 +36,6 @@ app.command(name="rejoin")(rejoin)
 app.command(name="sessions")(sessions)
 app.command(name="kill")(kill)
 app.command(name="update")(update)
-# Backwards-compatible alias for self-update
-app.command(name="update-self", help="Alias for update")(update)
 app.command(name="quote", hidden=True)(quote)
 
 

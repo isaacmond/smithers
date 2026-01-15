@@ -1,13 +1,15 @@
 """Version checking service for smithers."""
 
 import json
+import subprocess
 import time
 from pathlib import Path
+from shutil import which
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
 from smithers import __version__
-from smithers.console import print_warning
+from smithers.console import print_info, print_success, print_warning
 
 # Cache settings
 CACHE_DIR = Path.home() / ".smithers"
@@ -100,8 +102,27 @@ def get_latest_version() -> str | None:
     return latest
 
 
+def _perform_auto_update() -> bool:
+    """Perform auto-update using uv. Returns True if successful."""
+    if which("uv") is None:
+        return False
+
+    try:
+        result = subprocess.run(
+            ["uv", "tool", "upgrade", "smithers"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        stdout = (result.stdout or "").strip()
+        # Check if already up to date (no actual update performed)
+        return "already" not in stdout.lower()
+    except subprocess.CalledProcessError:
+        return False
+
+
 def check_for_updates() -> None:
-    """Check if a newer version is available and print a warning if so."""
+    """Check if a newer version is available and auto-update for minor versions."""
     latest_version = get_latest_version()
     if not latest_version:
         return
@@ -109,8 +130,32 @@ def check_for_updates() -> None:
     current = _parse_version(__version__)
     latest = _parse_version(latest_version)
 
-    if latest > current:
+    if latest <= current:
+        return
+
+    # Check if this is a major version bump
+    current_major = current[0] if current else 0
+    latest_major = latest[0] if latest else 0
+
+    if latest_major > current_major:
+        # Major version bump - warn but don't auto-update
         print_warning(
-            f"A new version of smithers is available: {latest_version} "
+            f"A new major version of smithers is available: {latest_version} "
             f"(you have {__version__}). Run 'smithers update' to upgrade."
+        )
+        return
+
+    # Minor/patch version bump - auto-update
+    print_info(f"Updating smithers to {latest_version}...")
+    if _perform_auto_update():
+        print_success(
+            f"Smithers updated to {latest_version}. "
+            "Restart your shell to use the new version."
+        )
+        # Clear cache so next run doesn't try to update again
+        _write_cache(latest_version)
+    else:
+        print_warning(
+            f"Auto-update failed. Run 'smithers update' manually to upgrade "
+            f"to {latest_version}."
         )
