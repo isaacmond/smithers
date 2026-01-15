@@ -14,6 +14,7 @@ from smithers.exceptions import DependencyMissingError, SmithersError
 from smithers.logging_config import get_logger
 from smithers.models.config import Config, set_config
 from smithers.services.claude import ClaudeService
+from smithers.services.vibekanban import create_vibekanban_service
 
 logger = get_logger("smithers.commands.plan")
 
@@ -61,6 +62,7 @@ def plan(
 
     # Initialize services for dependency check
     claude_service = ClaudeService(model=model)
+    vibekanban_service = create_vibekanban_service()
 
     # Check dependencies
     logger.info("Checking dependencies")
@@ -88,6 +90,15 @@ def plan(
     # The plan file Claude will create during the session
     claude_plan_file = Path.cwd() / ".claude" / "plan.md"
     logger.debug(f"Claude plan file: {claude_plan_file}")
+
+    # Create vibekanban task for tracking
+    vk_task_id = vibekanban_service.create_task(
+        title=f"Planning: {output_path.stem}",
+        description="Interactive planning session with Claude",
+    )
+    if vk_task_id:
+        vibekanban_service.update_task_status(vk_task_id, "in_progress")
+        logger.info(f"Created vibekanban task: {vk_task_id}")
 
     print_info("\nLaunching Claude in plan mode...")
     print_info("Work with Claude to create your implementation plan.")
@@ -131,6 +142,12 @@ def plan(
         print_success(f"\nPlan saved to: {output_path}")
         console.print("\nTo implement this plan, run:")
         console.print(f"  [cyan]smithers implement <design_doc> --todo-file {output_path}[/cyan]")
+
+        # Update vibekanban task status
+        if vk_task_id:
+            vibekanban_service.update_task_status(vk_task_id, "completed")
     except OSError as e:
         logger.exception("Failed to copy plan file")
+        if vk_task_id:
+            vibekanban_service.update_task_status(vk_task_id, "failed")
         raise SmithersError(f"Failed to copy plan file: {e}") from e

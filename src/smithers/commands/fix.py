@@ -19,6 +19,7 @@ from smithers.services.claude import ClaudeService
 from smithers.services.git import GitService
 from smithers.services.github import GitHubService
 from smithers.services.tmux import TmuxService
+from smithers.services.vibekanban import create_vibekanban_service
 
 logger = get_logger("smithers.commands.fix")
 
@@ -139,6 +140,7 @@ def fix(
     tmux_service = TmuxService()
     claude_service = ClaudeService(model=model)
     github_service = GitHubService()
+    vibekanban_service = create_vibekanban_service()
 
     # Check dependencies
     logger.info("Checking dependencies")
@@ -165,6 +167,16 @@ def fix(
     if dry_run:
         console.print("\n[yellow]DRY RUN MODE - No changes will be made[/yellow]")
         return
+
+    # Create vibekanban task for tracking
+    pr_list = ", ".join(f"#{pr}" for pr in pr_numbers)
+    vk_task_id = vibekanban_service.create_task(
+        title=f"Fix PRs: {pr_list}",
+        description=f"Fixing review comments and CI on: {pr_list}",
+    )
+    if vk_task_id:
+        vibekanban_service.update_task_status(vk_task_id, "in_progress")
+        logger.info(f"Created vibekanban task: {vk_task_id}")
 
     # Get branch names for each PR
     logger.info("Fetching branch names for PRs")
@@ -217,6 +229,8 @@ def fix(
                 logger.info(f"All done! Completed in {iteration} iteration(s)")
                 print_header("ALL COMMENTS RESOLVED & CI PASSING!")
                 console.print(f"Completed in {iteration} iteration(s)")
+                if vk_task_id:
+                    vibekanban_service.update_task_status(vk_task_id, "completed")
                 break
 
             if result["comments_done_ci_failing"]:

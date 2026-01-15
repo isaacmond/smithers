@@ -16,6 +16,7 @@ from smithers.prompts.standardize import (
 )
 from smithers.services.claude import ClaudeService
 from smithers.services.github import GitHubService
+from smithers.services.vibekanban import create_vibekanban_service
 
 logger = get_logger("smithers.commands.standardize")
 
@@ -143,6 +144,7 @@ def standardize(
     # Initialize services
     claude_service = ClaudeService(model=model)
     github_service = GitHubService()
+    vibekanban_service = create_vibekanban_service()
 
     # Check dependencies
     logger.info("Checking dependencies")
@@ -161,6 +163,18 @@ def standardize(
 
     if dry_run:
         console.print("\n[yellow]DRY RUN MODE - Will show analysis but not update PRs[/yellow]")
+
+    # Create vibekanban task for tracking (only if not dry run)
+    vk_task_id: str | None = None
+    if not dry_run:
+        pr_list = ", ".join(f"#{pr}" for pr in pr_numbers)
+        vk_task_id = vibekanban_service.create_task(
+            title=f"Standardize PRs: {pr_list}",
+            description=f"Standardizing titles and descriptions for: {pr_list}",
+        )
+        if vk_task_id:
+            vibekanban_service.update_task_status(vk_task_id, "in_progress")
+            logger.info(f"Created vibekanban task: {vk_task_id}")
 
     # Fetch PR info and diffs
     print_info("\nFetching PR information and diffs...")
@@ -264,6 +278,10 @@ def standardize(
 
     print_header("Standardization Complete!")
     console.print(f"Successfully standardized {len(pr_numbers)} PRs")
+
+    # Update vibekanban task status
+    if vk_task_id:
+        vibekanban_service.update_task_status(vk_task_id, "completed")
 
 
 def _display_analysis_results(analysis: dict[str, Any]) -> None:

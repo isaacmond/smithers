@@ -19,6 +19,7 @@ from smithers.prompts.planning import render_planning_prompt
 from smithers.services.claude import ClaudeService
 from smithers.services.git import GitService
 from smithers.services.tmux import TmuxService
+from smithers.services.vibekanban import create_vibekanban_service
 
 logger = get_logger("smithers.commands.implement")
 
@@ -161,6 +162,7 @@ def implement(
     git_service = GitService()
     tmux_service = TmuxService()
     claude_service = ClaudeService(model=model)
+    vibekanban_service = create_vibekanban_service()
 
     # Check dependencies
     logger.info("Checking dependencies")
@@ -199,9 +201,19 @@ def implement(
         console.print("\n[yellow]DRY RUN MODE - No changes will be made[/yellow]")
         return
 
+    # Create vibekanban task for tracking
+    vk_task_id = vibekanban_service.create_task(
+        title=f"Implement: {design_doc.stem}",
+        description=f"Implementing design document: {design_doc}",
+    )
+    if vk_task_id:
+        vibekanban_service.update_task_status(vk_task_id, "in_progress")
+        logger.info(f"Created vibekanban task: {vk_task_id}")
+
     # Track collected PRs for fix mode transition
     collected_prs: list[int] = []
     design_content: str | None = None
+    implementation_success = False
 
     try:
         if user_supplied_todo:
@@ -245,9 +257,12 @@ def implement(
                 config=config,
                 resume=resume,
             )
+        implementation_success = True
     except SmithersError as e:
         logger.error(f"SmithersError: {e}", exc_info=True)
         print_error(str(e))
+        if vk_task_id:
+            vibekanban_service.update_task_status(vk_task_id, "failed")
         raise typer.Exit(1) from e
     finally:
         # Cleanup worktrees on exit
@@ -259,6 +274,10 @@ def implement(
     print_header("Implementation Complete!")
     console.print(f"TODO file: [cyan]{todo_file_path}[/cyan]")
     console.print(f"PRs created: [green]{', '.join(f'#{pr}' for pr in collected_prs)}[/green]")
+
+    # Update vibekanban task status
+    if vk_task_id and implementation_success:
+        vibekanban_service.update_task_status(vk_task_id, "completed")
 
     # Transition to fix mode if we have PRs
     if collected_prs:

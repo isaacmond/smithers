@@ -231,6 +231,46 @@ The `--resume` flag skips stages already marked as `completed` in the TODO file 
 
 **Note**: Fix mode always updates PR branches with the latest changes from the base branch and resolves merge conflicts, even when there are no review comments to address.
 
+## Vibekanban Integration
+
+Smithers can optionally integrate with [Vibekanban](https://vibekanban.com/) to track Claude sessions as tasks in a kanban UI.
+
+### Configuration
+
+Create a config file at `~/.smithers/config.json`:
+
+```json
+{
+  "vibekanban": {
+    "enabled": true,
+    "project_id": "your-project-id"
+  }
+}
+```
+
+Or use environment variables:
+
+```bash
+export SMITHERS_VIBEKANBAN_ENABLED=1
+export SMITHERS_VIBEKANBAN_PROJECT_ID=your-project-id
+```
+
+### How It Works
+
+When configured, smithers will:
+
+1. **Create a task** in vibekanban when a command starts (implement, fix, plan, standardize)
+2. **Update task status** to "in_progress" while running
+3. **Mark as completed** when the command finishes successfully
+4. **Mark as failed** if the command fails
+
+This allows you to monitor all your Claude sessions in the vibekanban UI.
+
+### Requirements
+
+- Vibekanban must be installed: `npx vibe-kanban`
+- You need a project ID from vibekanban (visible in the UI or via `list_projects` MCP tool)
+
 ## Architecture
 
 Smithers uses a **prompt-first architecture** where Claude Code handles all the complex logic:
