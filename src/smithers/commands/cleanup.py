@@ -1,10 +1,11 @@
-"""Cleanup command - delete all smithers-created vibekanban tasks."""
+"""Cleanup command - delete all smithers-created vibekanban tasks and worktrees."""
 
 from typing import Annotated
 
 import typer
 
 from smithers.console import console, print_error, print_header, print_info, print_success
+from smithers.services.git import GitService
 from smithers.services.vibekanban import VibekanbanService, get_vibekanban_url
 
 
@@ -17,16 +18,38 @@ def cleanup(
         bool,
         typer.Option("--force", "-f", help="Skip confirmation prompt"),
     ] = False,
+    worktrees: Annotated[
+        bool,
+        typer.Option("--worktrees", "-w", help="Also clean up git worktrees"),
+    ] = False,
+    worktrees_only: Annotated[
+        bool,
+        typer.Option("--worktrees-only", help="Only clean up git worktrees (skip vibekanban)"),
+    ] = False,
+    delete_branches: Annotated[
+        bool,
+        typer.Option("--delete-branches", help="Also delete branches when removing worktrees"),
+    ] = False,
 ) -> None:
-    """Delete all smithers-created vibekanban tasks.
+    """Delete all smithers-created vibekanban tasks and optionally git worktrees.
 
     Finds and deletes all tasks with [impl] or [fix] prefixes across
     all statuses (todo, in_progress, completed, failed).
 
+    With --worktrees or --worktrees-only, also cleans up git worktrees
+    (excluding the main repository).
+
     Examples:
-        smithers cleanup           # Clean up configured/auto-discovered project
-        smithers cleanup megarepo  # Clean up the megarepo project
+        smithers cleanup                  # Clean up vibekanban tasks
+        smithers cleanup megarepo         # Clean up the megarepo project
+        smithers cleanup --worktrees      # Clean up tasks AND worktrees
+        smithers cleanup --worktrees-only # Only clean up worktrees
     """
+    # Handle worktrees cleanup
+    if worktrees_only:
+        _cleanup_worktrees(force=force, delete_branches=delete_branches)
+        return
+
     print_header("Vibekanban Cleanup")
 
     vibekanban_url = get_vibekanban_url()
@@ -110,6 +133,77 @@ def cleanup(
         print_success(f"Deleted {deleted} task(s).")
     if failed > 0:
         print_error(f"Failed to delete {failed} task(s).")
+
+    # Also clean up worktrees if requested
+    if worktrees:
+        console.print()
+        _cleanup_worktrees(force=force, delete_branches=delete_branches)
+
+
+def _cleanup_worktrees(*, force: bool = False, delete_branches: bool = False) -> None:
+    """Clean up git worktrees.
+
+    Removes all worktrees except the main repository.
+
+    Args:
+        force: Skip confirmation prompt
+        delete_branches: Also delete the branches when removing worktrees
+    """
+    print_header("Worktree Cleanup")
+
+    git_service = GitService()
+
+    # Check if gtr is available
+    missing = git_service.check_dependencies()
+    if "git-worktree-runner (gtr)" in missing:
+        print_error("git-worktree-runner (gtr) not found.")
+        console.print("\nInstall with: [cyan]npm install -g git-worktree-runner[/cyan]")
+        raise typer.Exit(1)
+
+    # List all worktrees
+    console.print("[dim]Scanning for worktrees...[/dim]\n")
+    all_worktrees = git_service.list_worktrees()
+
+    # Filter out main repo
+    worktrees_to_clean = [wt for wt in all_worktrees if not wt.is_main_repo]
+
+    if not worktrees_to_clean:
+        print_info("No worktrees found to clean up.")
+        return
+
+    # Display what will be removed
+    console.print(f"[yellow]Found {len(worktrees_to_clean)} worktree(s):[/yellow]\n")
+
+    for wt in worktrees_to_clean:
+        status_color = "red" if wt.status != "ok" else "dim"
+        console.print(
+            f"  - [cyan]{wt.branch}[/cyan] at [dim]{wt.path}[/dim] "
+            f"[{status_color}]({wt.status})[/{status_color}]"
+        )
+    console.print()
+
+    # Confirm before deleting (unless --force)
+    if not force:
+        action = "Remove" if not delete_branches else "Remove worktrees and delete branches for"
+        confirm = typer.confirm(f"{action} all {len(worktrees_to_clean)} worktree(s)?")
+        if not confirm:
+            console.print("[yellow]Cancelled.[/yellow]")
+            raise typer.Exit(0)
+
+    # Remove worktrees
+    console.print()
+    branches = [wt.branch for wt in worktrees_to_clean]
+    removed, failed = git_service.remove_worktrees(
+        branches,
+        delete_branch=delete_branches,
+        force=True,  # Force removal to handle dirty worktrees
+    )
+
+    console.print()
+    if removed > 0:
+        print_success(f"Removed {removed} worktree(s).")
+    if failed > 0:
+        print_error(f"Failed to remove {failed} worktree(s).")
 
 
 def _resolve_project_by_name(name: str, service: VibekanbanService) -> str | None:

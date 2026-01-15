@@ -574,13 +574,13 @@ def _run_implementation_phase(
         )
         prompt_file.write_text(prompt)
 
-        # Create vibekanban task for this stage session (created as in_progress)
-        stage_vk_task_id = vibekanban_service.create_task(
+        # Find or create vibekanban task for this stage session (reuses existing tasks)
+        stage_vk_task_id = vibekanban_service.find_or_create_task(
             title=f"[impl] Stage {stage.number}: {stage.title}",
             description=f"Implementing {stage.branch} for {design_doc.name}",
         )
         if stage_vk_task_id:
-            logger.info(f"Created vibekanban task for stage {stage.number}: {stage_vk_task_id}")
+            logger.info(f"Using vibekanban task for stage {stage.number}: {stage_vk_task_id}")
 
         # Launch Claude session (Claude will mark stage as in_progress)
         console.print(f"\nLaunching Claude session for Stage {stage.number}...")

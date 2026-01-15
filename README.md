@@ -113,15 +113,18 @@ Analyzes all PR diffs and updates each PR with:
 
 ### cleanup
 
-Delete all smithers-created vibekanban tasks.
+Delete all smithers-created vibekanban tasks and optionally git worktrees.
 
 ```bash
-smithers cleanup           # Delete all [impl] and [fix] tasks
-smithers cleanup megarepo  # Clean up the megarepo project
-smithers cleanup --force   # Skip confirmation prompt
+smithers cleanup                    # Delete all [impl] and [fix] tasks
+smithers cleanup megarepo           # Clean up the megarepo project
+smithers cleanup --force            # Skip confirmation prompt
+smithers cleanup --worktrees        # Also clean up git worktrees
+smithers cleanup --worktrees-only   # Only clean up worktrees (skip vibekanban)
+smithers cleanup -w --delete-branches  # Remove worktrees and their branches
 ```
 
-Finds and removes all tasks with `[impl]` or `[fix]` prefixes across all statuses (todo, in_progress, completed, failed).
+Finds and removes all tasks with `[impl]` or `[fix]` prefixes across all statuses (todo, in_progress, completed, failed). With `--worktrees`, also removes all git worktrees created by smithers (or any other worktrees).
 
 ### Session Management
 

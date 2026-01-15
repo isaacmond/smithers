@@ -327,6 +327,16 @@ def _run_fix_iteration(
     print_success(f"Review fix plan created: {todo_file}")
     todo_content = todo_file.read_text()
 
+    # Extract planning results to check if any fixes are needed
+    planning_json = result.extract_json()
+    num_comments = planning_json.get("num_comments", 0) if planning_json else 0
+    num_ci_failures = planning_json.get("num_ci_failures", 0) if planning_json else 0
+    logger.info(f"Planning found: {num_comments} comments, {num_ci_failures} CI failures")
+    console.print(
+        f"Found: [cyan]{num_comments}[/cyan] unresolved comments, "
+        f"[cyan]{num_ci_failures}[/cyan] CI failures"
+    )
+
     # Process each PR in parallel
     print_info("\nCreating worktrees and launching Claude sessions for each PR...")
 
@@ -366,18 +376,24 @@ def _run_fix_iteration(
         prompt_file.write_text(prompt)
 
         # Create vibekanban task for this PR fix session with PR link in description
-        pr_url = pr_urls.get(pr_num, "")
-        task_description = (
-            f"Fixing review comments on {branch}\n\nPR: {pr_url}"
-            if pr_url
-            else f"Fixing review comments on {branch}"
-        )
-        pr_vk_task_id = vibekanban_service.create_task(
-            title=f"[fix] PR #{pr_num}: {branch}",
-            description=task_description,
-        )
-        if pr_vk_task_id:
-            logger.info(f"Created vibekanban task for PR #{pr_num}: {pr_vk_task_id}")
+        # Only create/reuse task if there are actual issues to fix
+        pr_vk_task_id: str | None = None
+        if num_comments > 0 or num_ci_failures > 0:
+            pr_url = pr_urls.get(pr_num, "")
+            task_description = (
+                f"Fixing review comments on {branch}\n\nPR: {pr_url}"
+                if pr_url
+                else f"Fixing review comments on {branch}"
+            )
+            # Find existing task or create new one (reuses existing tasks)
+            pr_vk_task_id = vibekanban_service.find_or_create_task(
+                title=f"[fix] PR #{pr_num}: {branch}",
+                description=task_description,
+            )
+            if pr_vk_task_id:
+                logger.info(f"Using vibekanban task for PR #{pr_num}: {pr_vk_task_id}")
+        else:
+            logger.info(f"Skipping vibekanban task for PR #{pr_num}: no issues to fix")
 
         group_data.append(
             {
@@ -394,6 +410,7 @@ def _run_fix_iteration(
 
     # Launch all Claude sessions
     sessions: list[str] = []
+    session_to_data: dict[str, dict[str, object]] = {}
     for data in group_data:
         command = claude_service.create_tmux_command(
             prompt_file=Path(str(data["prompt_file"])),
@@ -408,10 +425,44 @@ def _run_fix_iteration(
             command=command,
         )
         sessions.append(session)
+        session_to_data[session] = data
         console.print(f"  PR #{data['pr_number']}: tmux session '{session}'")
 
-    # Wait for all sessions
-    tmux_service.wait_for_sessions(sessions, poll_interval=config.poll_interval)
+    # Create callback for immediate vibekanban updates when each session completes
+    def on_session_complete(session_name: str) -> None:
+        """Update vibekanban status immediately when a session completes."""
+        data = session_to_data.get(session_name)
+        if not data:
+            return
+
+        vk_task_id = data.get("vk_task_id")
+        if not vk_task_id:
+            return
+
+        output_file = Path(str(data["output_file"]))
+        pr_num = data["pr_number"]
+        pr_done = False
+
+        if output_file.exists():
+            raw_output = output_file.read_text()
+            output = claude_service.parse_stream_json_output(raw_output)
+            from smithers.services.claude import ClaudeResult
+
+            fix_result = ClaudeResult(output=output, exit_code=0, success=True)
+            json_output = fix_result.extract_json()
+            if json_output:
+                pr_done = json_output.get("done", False)
+
+        status = "completed" if pr_done else "failed"
+        vibekanban_service.update_task_status(str(vk_task_id), status)
+        logger.info(f"PR #{pr_num}: vibekanban status updated to {status}")
+
+    # Wait for all sessions, updating vibekanban as each completes
+    tmux_service.wait_for_sessions(
+        sessions,
+        poll_interval=config.poll_interval,
+        on_session_complete=on_session_complete,
+    )
 
     # Collect results
     logger.info("Collecting results from all PRs")
@@ -431,7 +482,6 @@ def _run_fix_iteration(
         exit_file = Path(str(data["exit_file"]))
         stream_log_file = Path(str(data["stream_log_file"]))
         branch = str(data["branch"])
-        vk_task_id = data.get("vk_task_id")
 
         pr_done = False
         if output_file.exists():
@@ -479,10 +529,7 @@ def _run_fix_iteration(
             console.print(f"[yellow]Warning: No output file found for PR #{pr_num}[/yellow]")
             all_done = False
 
-        # Update vibekanban task status
-        if vk_task_id:
-            status = "completed" if pr_done else "failed"
-            vibekanban_service.update_task_status(str(vk_task_id), status)
+        # NOTE: vibekanban task status is updated immediately via on_session_complete callback
 
         # Cleanup temp files (keep stream log for debugging if verbose)
         files_to_clean = [prompt_file, output_file, exit_file]

@@ -253,6 +253,74 @@ class VibekanbanService:
             logger.warning("Failed to list vibekanban tasks", exc_info=True)
             return []
 
+    def find_task(self, title: str) -> dict[str, str] | None:
+        """Find an existing task by exact title.
+
+        Searches across all statuses to find a matching task.
+
+        Args:
+            title: The exact task title to search for
+
+        Returns:
+            Task dict if found, None otherwise.
+        """
+        if not self.is_configured():
+            return None
+
+        statuses = ["todo", "in_progress", "completed", "failed"]
+        for status in statuses:
+            try:
+                tasks = self.list_tasks(status=status)
+                for task in tasks:
+                    if task.get("title") == title:
+                        return task
+            except Exception:
+                logger.warning(f"Failed to search tasks with status {status}", exc_info=True)
+
+        return None
+
+    def find_or_create_task(
+        self,
+        title: str,
+        description: str = "",
+        status: str = "in_progress",
+    ) -> str | None:
+        """Find an existing task by title or create a new one.
+
+        If a task with the exact title exists, it is reused and its status
+        is updated to the specified status. Otherwise, a new task is created.
+
+        Args:
+            title: Task title
+            description: Task description (only used for new tasks)
+            status: Target task status (default: "in_progress")
+
+        Returns:
+            Task ID if successful, None otherwise.
+        """
+        if not self.is_configured():
+            logger.debug("Vibekanban not configured, skipping task find/create")
+            return None
+
+        # Try to find existing task
+        existing = self.find_task(title)
+        if existing:
+            task_id = existing.get("id")
+            if task_id:
+                task_id_str = str(task_id)
+                current_status = existing.get("status", "")
+                logger.info(
+                    f"Reusing existing vibekanban task: {task_id_str} "
+                    f"(current status: {current_status})"
+                )
+                # Update status to in_progress (or specified status)
+                if current_status != _to_vk_status(status):
+                    self.update_task_status(task_id_str, status)
+                return task_id_str
+
+        # No existing task found, create new one
+        return self.create_task(title=title, description=description, status=status)
+
     def delete_task(self, task_id: str) -> bool:
         """Delete a task from vibekanban.
 

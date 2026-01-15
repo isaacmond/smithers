@@ -47,11 +47,26 @@ Smithers creates a **separate vibekanban task for each Claude Code session**:
 - **Fix mode**: One task per PR (e.g., `[fix] PR #123: feature-branch`)
 
 Each task is:
-1. **Created** when the Claude session starts
+1. **Found or created** when the Claude session starts (existing tasks are reused)
 2. **Set to "in_progress"** while running
 3. **Linked to the PR** when available (PR URL is attached to the task)
 4. **Marked as "completed"** when the session succeeds
 5. **Marked as "failed"** if the session fails
+
+### Task Reuse
+
+Smithers automatically reuses existing vibekanban tasks to avoid duplicates:
+
+- Before creating a new task, smithers searches for an existing task with the same title
+- If found, the existing task is reused and its status is updated to "in_progress"
+- This prevents duplicate tasks when fix mode runs multiple iterations
+
+### Skip When No Fixes Needed
+
+In fix mode, vibekanban tasks are only created when there is actual work to do:
+
+- Tasks are skipped if there are 0 unresolved comments AND 0 CI failures
+- This keeps the kanban board clean by not tracking trivial iterations
 
 This allows you to monitor individual Claude sessions in real-time through the vibekanban UI, with direct links to the associated PRs.
 

@@ -9,6 +9,7 @@ import signal
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -552,12 +553,15 @@ class TmuxService:
         self,
         sessions: list[str],
         poll_interval: float = 5.0,
+        on_session_complete: Callable[[str], None] | None = None,
     ) -> None:
         """Wait for multiple tmux sessions to complete.
 
         Args:
             sessions: List of session names to wait for
             poll_interval: Seconds between status checks
+            on_session_complete: Optional callback invoked when each session completes.
+                                 Called with the session name as argument.
         """
         remaining = list(sessions)
         logger.info(f"Waiting for {len(sessions)} sessions: {sessions}")
@@ -582,6 +586,15 @@ class TmuxService:
                             else:
                                 logger.info(f"Session '{session}' completed")
                                 console.print(f"  [green]Session '{session}' completed[/green]")
+                                # Call completion callback immediately
+                                if on_session_complete is not None:
+                                    try:
+                                        on_session_complete(session)
+                                    except Exception as cb_err:
+                                        logger.warning(
+                                            f"on_session_complete callback failed for "
+                                            f"'{session}': {cb_err}"
+                                        )
                         except Exception as e:
                             logger.exception("Error checking session '%s'", session)
                             # Assume session is done if we can't check it
