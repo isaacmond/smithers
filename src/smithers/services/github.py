@@ -96,3 +96,79 @@ class GitHubService:
         except (json.JSONDecodeError, KeyError) as e:
             logger.exception(f"Failed to parse PR #{pr_number} info")
             raise GitHubError(f"Failed to parse PR #{pr_number} info: {e}") from e
+
+    def close_pr(self, pr_number: int, comment: str | None = None) -> None:
+        """Close a pull request.
+
+        Args:
+            pr_number: The PR number to close
+            comment: Optional comment to add before closing
+
+        Raises:
+            GitHubError: If the operation fails
+        """
+        logger.info(f"Closing PR #{pr_number}")
+
+        # Add comment if provided
+        if comment:
+            comment_cmd = ["gh", "pr", "comment", str(pr_number), "--body", comment]
+            try:
+                result = subprocess.run(
+                    comment_cmd,
+                    capture_output=True,
+                    check=True,
+                    text=True,
+                )
+                log_subprocess_result(
+                    logger, comment_cmd, result.returncode, result.stdout, result.stderr
+                )
+            except subprocess.CalledProcessError as e:
+                # Log but don't fail if comment fails
+                logger.warning(f"Failed to add comment to PR #{pr_number}: {e.stderr}")
+
+        # Close the PR
+        cmd = ["gh", "pr", "close", str(pr_number)]
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                check=True,
+                text=True,
+            )
+            log_subprocess_result(logger, cmd, result.returncode, result.stdout, result.stderr)
+            logger.info(f"PR #{pr_number} closed successfully")
+        except subprocess.CalledProcessError as e:
+            log_subprocess_result(logger, cmd, e.returncode, e.stdout, e.stderr, success=False)
+            logger.exception(f"Failed to close PR #{pr_number}: {e.stderr}")
+            raise GitHubError(f"Failed to close PR #{pr_number}: {e.stderr}") from e
+
+    def delete_branch(self, branch: str) -> None:
+        """Delete a remote branch.
+
+        Args:
+            branch: The branch name to delete
+
+        Raises:
+            GitHubError: If the operation fails
+        """
+        logger.info(f"Deleting remote branch: {branch}")
+
+        # Use git push to delete the remote branch
+        cmd = ["git", "push", "origin", "--delete", branch]
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                check=True,
+                text=True,
+            )
+            log_subprocess_result(logger, cmd, result.returncode, result.stdout, result.stderr)
+            logger.info(f"Branch '{branch}' deleted successfully")
+        except subprocess.CalledProcessError as e:
+            log_subprocess_result(logger, cmd, e.returncode, e.stdout, e.stderr, success=False)
+            # Don't raise if branch doesn't exist (already deleted)
+            if "remote ref does not exist" in e.stderr:
+                logger.warning(f"Branch '{branch}' already deleted or doesn't exist")
+                return
+            logger.exception(f"Failed to delete branch '{branch}': {e.stderr}")
+            raise GitHubError(f"Failed to delete branch '{branch}': {e.stderr}") from e

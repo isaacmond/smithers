@@ -16,6 +16,7 @@ IMPLEMENTATION_PROMPT_TEMPLATE = """You are implementing Stage {stage_number} of
 ## IMPORTANT: You are working in a Git Worktree
 - Worktree path: {worktree_path}
 - Branch: {branch}
+- Session: {session_name}
 - This is an isolated worktree, not the main repository
 - All git operations are already scoped to this branch
 
@@ -56,7 +57,11 @@ Implement **Stage {stage_number}** as specified in the TODO file above.
      - What this stage implements
      - The branch/PR this stacks on (if applicable) with a clear link
      - The full stage list from the TODO (so reviewers see the big picture)
-10. **Update TODO status to completed** (see TODO State Management above)
+10. **Track the PR for cleanup**:
+    - After creating the PR, append the PR number to the tracking file:
+      `echo <pr_number> >> ~/.smithers/sessions/{session_name}/prs.txt`
+    - This allows `smithers kill` to close PRs and delete branches if the session is killed
+11. **Update TODO status to completed** (see TODO State Management above)
 {merge_conflict_section}
 ### If You Discover Issues
 If the plan needs adjustment:
@@ -101,6 +106,7 @@ def render_implementation_prompt(
     design_content: str,
     todo_file_path: Path,
     todo_content: str,
+    session_name: str,
 ) -> str:
     """Render the implementation prompt for a stage.
 
@@ -113,6 +119,7 @@ def render_implementation_prompt(
         design_content: Content of the design document
         todo_file_path: Path to the TODO file
         todo_content: Content of the TODO file
+        session_name: The smithers session name for PR tracking
 
     Returns:
         The rendered prompt string
@@ -127,6 +134,7 @@ def render_implementation_prompt(
         design_content=design_content,
         todo_file_path=todo_file_path,
         todo_content=todo_content,
+        session_name=session_name,
         merge_conflict_section=MERGE_CONFLICT_SECTION,
         quality_checks_section=QUALITY_CHECKS_SECTION,
         self_healing_section=SELF_HEALING_SECTION,

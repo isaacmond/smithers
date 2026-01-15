@@ -190,6 +190,13 @@ def implement(
     todo_file_path = todo_file or config.plans_dir / f"{design_doc.stem}.smithers-{timestamp}.md"
     todo_file_path.parent.mkdir(parents=True, exist_ok=True)
 
+    # Session name for PR tracking
+    session_name = f"smithers-impl-{design_doc.stem}"
+
+    # Ensure session directory exists for PR tracking
+    session_dir = config.sessions_dir / session_name
+    session_dir.mkdir(parents=True, exist_ok=True)
+
     print_header("Smithers: Implementing Design Document")
     console.print(f"Design doc: [cyan]{design_doc}[/cyan]")
     console.print(f"TODO file: [cyan]{todo_file_path}[/cyan]")
@@ -232,6 +239,7 @@ def implement(
                 claude_service=claude_service,
                 config=config,
                 resume=resume,
+                session_name=session_name,
             )
         else:
             logger.info("Phase 1: Planning")
@@ -256,6 +264,7 @@ def implement(
                 claude_service=claude_service,
                 config=config,
                 resume=resume,
+                session_name=session_name,
             )
         implementation_success = True
     except SmithersError as e:
@@ -306,6 +315,7 @@ def _run_implementation_phase(
     claude_service: ClaudeService,
     config: Config,
     resume: bool = False,
+    session_name: str = "",
 ) -> list[int]:
     """Run the implementation phase - execute stages sequentially.
 
@@ -319,6 +329,7 @@ def _run_implementation_phase(
         claude_service: Claude service instance.
         config: Configuration instance.
         resume: If True, skip stages that are already completed.
+        session_name: The smithers session name for PR tracking.
 
     Returns:
         List of PR numbers created (including previously completed if resuming).
@@ -405,6 +416,7 @@ def _run_implementation_phase(
             design_content=design_content,
             todo_file_path=todo_file,
             todo_content=todo_content,
+            session_name=session_name,
         )
         prompt_file.write_text(prompt)
 

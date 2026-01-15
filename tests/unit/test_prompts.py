@@ -70,6 +70,7 @@ class TestImplementationPrompt:
             design_content="# Design",
             todo_file_path=Path("/path/to/todo.md"),
             todo_content="# TODO",
+            session_name="smithers-impl-test",
         )
 
         assert "Stage 1" in prompt
@@ -80,6 +81,8 @@ class TestImplementationPrompt:
         assert '"pr_number"' in prompt
         assert "code-review:code-review" in prompt
         assert "de-slopify" in prompt
+        assert "smithers-impl-test" in prompt
+        assert "prs.txt" in prompt
 
     def test_prompt_contains_quality_checks(self) -> None:
         """Test that the prompt includes quality check instructions."""
@@ -92,6 +95,7 @@ class TestImplementationPrompt:
             design_content="",
             todo_file_path=Path("todo.md"),
             todo_content="",
+            session_name="smithers-impl-test",
         )
 
         assert "quality checks" in prompt
@@ -110,6 +114,7 @@ class TestImplementationPrompt:
             design_content="",
             todo_file_path=Path("todo.md"),
             todo_content="",
+            session_name="smithers-impl-test",
         )
 
         assert "Merge Conflict" in prompt
@@ -126,6 +131,7 @@ class TestImplementationPrompt:
             design_content="# Design",
             todo_file_path=Path("/path/to/todo.md"),
             todo_content="# TODO",
+            session_name="smithers-impl-test",
         )
 
         assert "stacked" in prompt

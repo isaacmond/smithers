@@ -6,6 +6,7 @@ import typer
 
 from smithers.console import console, print_error, print_header, print_info, print_warning
 from smithers.services.git import GitService
+from smithers.services.github import GitHubService
 from smithers.services.tmux import TmuxService
 
 
@@ -24,10 +25,6 @@ def kill(
         bool,
         typer.Option("--force", "-f", help="Skip confirmation prompt"),
     ] = False,
-    cleanup_worktrees: Annotated[
-        bool,
-        typer.Option("--cleanup-worktrees", "-w", help="Also remove associated git worktrees"),
-    ] = False,
 ) -> None:
     """Kill a running smithers tmux session.
 
@@ -37,13 +34,13 @@ def kill(
     This will:
     - Terminate the tmux session (stops Claude Code and other processes)
     - Clean up session output files
-
-    Use --cleanup-worktrees to also remove git worktrees created by the session.
+    - Clean up git worktrees created by the session
+    - For implement sessions: close all PRs and delete all branches
     """
     tmux_service = TmuxService()
 
     if all_sessions:
-        _kill_all_sessions(tmux_service, force, cleanup_worktrees)
+        _kill_all_sessions(tmux_service, force)
         return
 
     # Determine which session to kill
@@ -81,47 +78,102 @@ def kill(
                 console.print(f"  • {s.name}")
         raise typer.Exit(1)
 
-    # Check for tracked worktrees before confirming
+    # Gather cleanup info
     tracked_worktrees = tmux_service.get_session_worktrees(target_session)
+    session_mode = TmuxService.get_session_mode(target_session)
+    tracked_prs: list[int] = []
+    if session_mode == "implement":
+        tracked_prs = tmux_service.get_session_prs(target_session)
 
     # Confirm before killing (unless --force)
     if not force:
-        if tracked_worktrees and not cleanup_worktrees:
-            wt_count = len(tracked_worktrees)
-            console.print(f"\n[yellow]Session has {wt_count} tracked worktree(s):[/yellow]")
-            for wt in tracked_worktrees:
-                console.print(f"  • {wt}")
-            console.print("\n[dim]Use --cleanup-worktrees to also remove them[/dim]")
+        _show_cleanup_info(target_session, session_mode, tracked_worktrees, tracked_prs)
 
         confirm = typer.confirm(f"\nKill session '{target_session}'?")
         if not confirm:
             console.print("[yellow]Cancelled.[/yellow]")
             raise typer.Exit(0)
 
-    # Kill the session (this also cleans up session files)
-    _kill_session_with_cleanup(tmux_service, target_session, cleanup_worktrees, tracked_worktrees)
+    # Kill the session with full cleanup
+    _kill_session_with_cleanup(
+        tmux_service=tmux_service,
+        session_name=target_session,
+        session_mode=session_mode,
+        tracked_worktrees=tracked_worktrees,
+        tracked_prs=tracked_prs,
+    )
     print_info(f"Session '{target_session}' has been killed.")
+
+
+def _show_cleanup_info(
+    session_name: str,
+    session_mode: str | None,
+    tracked_worktrees: list[str],
+    tracked_prs: list[int],
+) -> None:
+    """Show what will be cleaned up when killing a session."""
+    console.print(f"\n[cyan]Session:[/cyan] {session_name}")
+
+    if session_mode:
+        console.print(f"[cyan]Mode:[/cyan] {session_mode}")
+
+    if tracked_worktrees:
+        console.print(f"\n[yellow]Will cleanup {len(tracked_worktrees)} worktree(s):[/yellow]")
+        for wt in tracked_worktrees:
+            console.print(f"  • {wt}")
+
+    if session_mode == "implement" and tracked_prs:
+        pr_count = len(tracked_prs)
+        console.print(f"\n[yellow]Will close {pr_count} PR(s) and delete branches:[/yellow]")
+        for pr in tracked_prs:
+            console.print(f"  • PR #{pr}")
 
 
 def _kill_session_with_cleanup(
     tmux_service: TmuxService,
     session_name: str,
-    cleanup_worktrees: bool,
+    session_mode: str | None,
     tracked_worktrees: list[str],
+    tracked_prs: list[int],
 ) -> None:
-    """Kill a session and optionally clean up worktrees.
+    """Kill a session and clean up all associated resources.
 
     Args:
         tmux_service: The tmux service instance
         session_name: Name of the session to kill
-        cleanup_worktrees: Whether to also remove worktrees
+        session_mode: The session mode ("implement", "fix", or None)
         tracked_worktrees: List of worktree branches to clean up
+        tracked_prs: List of PR numbers to close (for implement mode only)
     """
     # Kill the tmux session (stops Claude Code)
     tmux_service.kill_session(session_name)
 
-    # Clean up worktrees if requested
-    if cleanup_worktrees and tracked_worktrees:
+    # For implement mode, close PRs and delete branches
+    if session_mode == "implement" and tracked_prs:
+        github_service = GitHubService()
+        console.print("\n[dim]Closing PRs and deleting branches...[/dim]")
+
+        for pr_num in tracked_prs:
+            try:
+                # Get PR info to find the branch name
+                pr_info = github_service.get_pr_info(pr_num)
+                branch = pr_info.branch
+
+                # Close the PR
+                github_service.close_pr(
+                    pr_num,
+                    comment="Closed by `smithers kill` - session terminated.",
+                )
+                console.print(f"  [red]✗[/red] Closed PR #{pr_num}")
+
+                # Delete the branch
+                github_service.delete_branch(branch)
+                console.print(f"  [red]✗[/red] Deleted branch: {branch}")
+            except Exception as e:
+                print_warning(f"Failed to cleanup PR #{pr_num}: {e}")
+
+    # Always clean up worktrees
+    if tracked_worktrees:
         git_service = GitService()
         console.print("\n[dim]Cleaning up worktrees...[/dim]")
         for branch in tracked_worktrees:
@@ -130,14 +182,9 @@ def _kill_session_with_cleanup(
                 console.print(f"  [red]✗[/red] Removed worktree: {branch}")
             except Exception as e:
                 print_warning(f"Failed to remove worktree {branch}: {e}")
-    elif tracked_worktrees and not cleanup_worktrees:
-        console.print(
-            f"\n[dim]Note: {len(tracked_worktrees)} worktree(s) not removed. "
-            "Use --cleanup-worktrees to remove them.[/dim]"
-        )
 
 
-def _kill_all_sessions(tmux_service: TmuxService, force: bool, cleanup_worktrees: bool) -> None:
+def _kill_all_sessions(tmux_service: TmuxService, force: bool) -> None:
     """Kill all running smithers sessions."""
     sessions = tmux_service.list_smithers_sessions()
 
@@ -146,19 +193,29 @@ def _kill_all_sessions(tmux_service: TmuxService, force: bool, cleanup_worktrees
         return
 
     print_header("Sessions to Kill")
-    all_worktrees: dict[str, list[str]] = {}
+
+    # Gather info for all sessions
+    session_info: dict[str, dict[str, object]] = {}
     for session in sessions:
-        attached = " [green](attached)[/green]" if session.attached else ""
+        mode = TmuxService.get_session_mode(session.name)
         worktrees = tmux_service.get_session_worktrees(session.name)
-        all_worktrees[session.name] = worktrees
+        prs = tmux_service.get_session_prs(session.name) if mode == "implement" else []
+
+        session_info[session.name] = {
+            "mode": mode,
+            "worktrees": worktrees,
+            "prs": prs,
+            "attached": session.attached,
+        }
+
+        attached = " [green](attached)[/green]" if session.attached else ""
+        mode_str = f" [{mode}]" if mode else ""
         wt_info = f" ({len(worktrees)} worktree(s))" if worktrees else ""
-        console.print(f"  • [cyan]{session.name}[/cyan]{attached}{wt_info}")
+        pr_info = f" ({len(prs)} PR(s))" if prs else ""
+        console.print(f"  • [cyan]{session.name}[/cyan]{mode_str}{attached}{wt_info}{pr_info}")
 
     # Confirm before killing (unless --force)
     if not force:
-        if any(all_worktrees.values()) and not cleanup_worktrees:
-            msg = "[dim]Use --cleanup-worktrees to also remove associated worktrees[/dim]"
-            console.print(f"\n{msg}")
         confirm = typer.confirm(f"\nKill all {len(sessions)} session(s)?")
         if not confirm:
             console.print("[yellow]Cancelled.[/yellow]")
@@ -166,11 +223,13 @@ def _kill_all_sessions(tmux_service: TmuxService, force: bool, cleanup_worktrees
 
     # Kill each session
     for session in sessions:
+        info = session_info[session.name]
         _kill_session_with_cleanup(
-            tmux_service,
-            session.name,
-            cleanup_worktrees,
-            all_worktrees.get(session.name, []),
+            tmux_service=tmux_service,
+            session_name=session.name,
+            session_mode=str(info["mode"]) if info["mode"] else None,
+            tracked_worktrees=list(info["worktrees"]),  # type: ignore[arg-type]
+            tracked_prs=list(info["prs"]),  # type: ignore[arg-type]
         )
         console.print(f"  [red]✗[/red] Killed [cyan]{session.name}[/cyan]")
 

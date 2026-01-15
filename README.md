@@ -150,12 +150,16 @@ smithers kill smithers-impl-my-feature
 # Kill all running smithers sessions
 smithers kill --all
 
-# Also remove git worktrees created by the session
-smithers kill --cleanup-worktrees
-
 # Skip confirmation prompt
 smithers kill --force
 ```
+
+When you kill a session, smithers will:
+- Terminate the tmux session
+- Clean up all git worktrees created by the session
+- **For implement sessions only**: Close all PRs and delete all remote branches
+
+This ensures a clean slate when you want to abandon an implementation and start fresh.
 
 ### Updates
 

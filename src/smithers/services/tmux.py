@@ -788,3 +788,48 @@ class TmuxService:
             return [b for b in content.split("\n") if b]
         except OSError:
             return []
+
+    def get_session_prs(self, session: str) -> list[int]:
+        """Get PR numbers tracked for a session.
+
+        PRs are tracked by Claude writing to prs.txt during implementation.
+
+        Args:
+            session: The sanitized session name
+
+        Returns:
+            List of PR numbers tracked for this session
+        """
+        session = self.sanitize_session_name(session)
+        session_dir = DEFAULT_SESSIONS_DIR / session
+        prs_file = session_dir / "prs.txt"
+        if not prs_file.exists():
+            return []
+        try:
+            content = prs_file.read_text().strip()
+            prs: list[int] = []
+            for raw_line in content.split("\n"):
+                stripped = raw_line.strip()
+                if stripped and stripped.isdigit():
+                    prs.append(int(stripped))
+            return prs
+        except OSError:
+            return []
+
+    @staticmethod
+    def get_session_mode(session: str) -> str | None:
+        """Detect the mode of a session from its name.
+
+        Args:
+            session: The session name
+
+        Returns:
+            "implement" for smithers-impl-* sessions,
+            "fix" for smithers-fix-* sessions,
+            None for unknown session types
+        """
+        if session.startswith("smithers-impl-"):
+            return "implement"
+        if session.startswith("smithers-fix-"):
+            return "fix"
+        return None
