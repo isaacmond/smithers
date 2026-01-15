@@ -195,7 +195,7 @@ wheels = [
 
 [[package]]
 name = "smithers"
-version = "1.7.5"
+version = "1.7.6"
 source = { editable = "." }
 dependencies = [
     { name = "rich" },

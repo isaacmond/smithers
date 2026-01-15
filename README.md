@@ -178,7 +178,13 @@ The `--resume` flag skips stages already marked as `completed` in the TODO file 
 
 1. **Fetch Comments**: Gets unresolved review comments and CI failures for each PR
 2. **Process PRs**: Creates worktrees and runs Claude in parallel to address issues
-3. **Loop**: Continues until all comments are resolved and CI passes
+3. **Loop**: Continues until ALL of the following are satisfied:
+   - Base branch (origin/main) is merged into all PR branches
+   - All merge conflicts are resolved
+   - All review comments are addressed (0 unresolved comments per PR)
+   - All CI/CD checks are passing
+
+**Note**: Fix mode always updates PR branches with the latest changes from the base branch and resolves merge conflicts, even when there are no review comments to address.
 
 ## Architecture
 

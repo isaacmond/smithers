@@ -366,6 +366,8 @@ def _run_fix_iteration(
     total_addressed = 0
     all_done = True
     all_ci_passing = True
+    all_base_merged = True
+    all_merge_conflicts_resolved = True
     combined_output = ""
 
     for data in group_data:
@@ -396,6 +398,10 @@ def _run_fix_iteration(
                     all_done = False
                 if json_output.get("ci_status") == "failing":
                     all_ci_passing = False
+                if not json_output.get("base_branch_merged", False):
+                    all_base_merged = False
+                if json_output.get("merge_conflicts") == "unresolved":
+                    all_merge_conflicts_resolved = False
                 total_unresolved += json_output.get("unresolved_before", 0)
                 total_addressed += json_output.get("addressed", 0)
             else:
@@ -417,16 +423,35 @@ def _run_fix_iteration(
     # Print summary
     logger.info(
         f"Iteration summary: unresolved={total_unresolved}, addressed={total_addressed}, "
-        f"ci_passing={all_ci_passing}, all_done={all_done}"
+        f"ci_passing={all_ci_passing}, base_merged={all_base_merged}, "
+        f"merge_conflicts_resolved={all_merge_conflicts_resolved}, all_done={all_done}"
     )
     console.print(f"\nTotal unresolved before: {total_unresolved}")
     console.print(f"Total addressed: {total_addressed}")
     console.print(f"All CI passing: {all_ci_passing}")
+    console.print(f"All base branches merged: {all_base_merged}")
+    console.print(f"All merge conflicts resolved: {all_merge_conflicts_resolved}")
     console.print(f"All done: {all_done}")
 
+    # All conditions must be met for fix to be complete:
+    # 1. Claude reports done for all PRs
+    # 2. All CI checks passing
+    # 3. All base branches merged
+    # 4. All merge conflicts resolved
+    # 5. No unresolved comments remaining
+    truly_all_done = (
+        all_done
+        and all_ci_passing
+        and all_base_merged
+        and all_merge_conflicts_resolved
+        and total_unresolved == 0
+    )
+
     return {
-        "all_done": all_done and all_ci_passing,
+        "all_done": truly_all_done,
         "comments_done_ci_failing": all_done and not all_ci_passing,
         "total_unresolved": total_unresolved,
         "total_addressed": total_addressed,
+        "all_base_merged": all_base_merged,
+        "all_merge_conflicts_resolved": all_merge_conflicts_resolved,
     }
