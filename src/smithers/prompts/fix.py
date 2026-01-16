@@ -17,7 +17,7 @@ FIX_PLANNING_PROMPT_TEMPLATE = """You are creating a fix plan to address review 
 Location: {design_doc_path}
 
 {design_content}
-
+{original_todo_section}
 ## PRs to Process
 {pr_numbers}
 
@@ -131,7 +131,7 @@ FIX_PROMPT_TEMPLATE = """You are addressing review comments on PR #{pr_number}.
 Location: {design_doc_path}
 
 {design_content}
-
+{original_todo_section}
 ## Implementation Plan (TODO)
 Location: {todo_file_path}
 
@@ -262,6 +262,7 @@ Process PR #{pr_number} now."""
 def render_fix_planning_prompt(
     design_doc_path: Path,
     design_content: str,
+    original_todo_content: str | None,
     pr_numbers: list[int],
     todo_file_path: Path,
 ) -> str:
@@ -270,6 +271,7 @@ def render_fix_planning_prompt(
     Args:
         design_doc_path: Path to the design document
         design_content: Content of the design document
+        original_todo_content: Content of the original implementation TODO (from implement phase)
         pr_numbers: List of PR numbers to process
         todo_file_path: Path where the TODO file should be created
 
@@ -277,13 +279,33 @@ def render_fix_planning_prompt(
         The rendered prompt string
     """
     pr_numbers_str = " ".join(str(n) for n in pr_numbers)
+    original_todo_section = _render_original_todo_section(original_todo_content)
     return render_template(
         FIX_PLANNING_PROMPT_TEMPLATE,
         design_doc_path=design_doc_path,
         design_content=design_content,
+        original_todo_section=original_todo_section,
         pr_numbers=pr_numbers_str,
         todo_file_path=todo_file_path,
     )
+
+
+def _render_original_todo_section(original_todo_content: str | None) -> str:
+    """Render the original implementation TODO section.
+
+    Args:
+        original_todo_content: Content of the original implementation TODO, or None
+
+    Returns:
+        The rendered section string, or empty string if no original todo
+    """
+    if not original_todo_content:
+        return ""
+    return f"""
+## Original Implementation TODO (from implement phase)
+
+{original_todo_content}
+"""
 
 
 def render_fix_prompt(
@@ -292,6 +314,7 @@ def render_fix_prompt(
     worktree_path: Path,
     design_doc_path: Path,
     design_content: str,
+    original_todo_content: str | None,
     todo_file_path: Path,
     todo_content: str,
 ) -> str:
@@ -303,12 +326,14 @@ def render_fix_prompt(
         worktree_path: Path to the worktree
         design_doc_path: Path to the design document
         design_content: Content of the design document
+        original_todo_content: Content of the original implementation TODO (from implement phase)
         todo_file_path: Path to the TODO file
         todo_content: Content of the TODO file
 
     Returns:
         The rendered prompt string
     """
+    original_todo_section = _render_original_todo_section(original_todo_content)
     return render_template(
         FIX_PROMPT_TEMPLATE,
         pr_number=pr_number,
@@ -316,6 +341,7 @@ def render_fix_prompt(
         worktree_path=worktree_path,
         design_doc_path=design_doc_path,
         design_content=design_content,
+        original_todo_section=original_todo_section,
         todo_file_path=todo_file_path,
         todo_content=todo_content,
         merge_conflict_section=MERGE_CONFLICT_SECTION,

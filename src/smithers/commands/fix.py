@@ -46,6 +46,18 @@ def fix(
         list[str],
         typer.Argument(help="PR numbers or GitHub PR URLs to process"),
     ],
+    original_todo: Annotated[
+        Path | None,
+        typer.Option(
+            "--todo",
+            "-t",
+            help="Original implementation TODO file (from implement phase)",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ] = None,
     model: Annotated[
         str,
         typer.Option("--model", "-m", help="Claude model to use"),
@@ -74,6 +86,7 @@ def fix(
     logger.info("Starting fix command")
     logger.info(f"  design_doc: {design_doc}")
     logger.info(f"  pr_identifiers: {pr_identifiers}")
+    logger.info(f"  original_todo: {original_todo}")
     logger.info(f"  model: {model}")
     logger.info(f"  dry_run: {dry_run}")
     logger.info(f"  verbose: {verbose}")
@@ -131,6 +144,8 @@ def fix(
 
     print_header("Smithers Loop: Fixing PR Comments (Parallel)")
     console.print(f"Design doc: [cyan]{design_doc}[/cyan]")
+    if original_todo:
+        console.print(f"Original TODO: [cyan]{original_todo}[/cyan]")
     console.print(f"PRs to process: [cyan]{', '.join(f'#{pr}' for pr in pr_numbers)}[/cyan]")
     vibekanban_url = get_vibekanban_url()
     if vibekanban_url:
@@ -185,6 +200,7 @@ def fix(
 
             result = _run_fix_iteration(
                 design_doc=design_doc,
+                original_todo=original_todo,
                 todo_file=todo_file,
                 pr_numbers=pr_numbers,
                 pr_branches=pr_branches,
@@ -240,6 +256,7 @@ def fix(
 def _run_fix_planning(
     design_doc: Path,
     design_content: str,
+    original_todo_content: str | None,
     pr_numbers: list[int],
     todo_file: Path,
     claude_service: ClaudeService,
@@ -250,6 +267,7 @@ def _run_fix_planning(
     Args:
         design_doc: Path to the design document.
         design_content: Content of the design document.
+        original_todo_content: Content of the original implementation TODO (from implement phase).
         pr_numbers: List of PR numbers to fix.
         todo_file: Path to the TODO file for this iteration.
         claude_service: Claude service instance.
@@ -262,6 +280,7 @@ def _run_fix_planning(
     planning_prompt = render_fix_planning_prompt(
         design_doc_path=design_doc,
         design_content=design_content,
+        original_todo_content=original_todo_content,
         pr_numbers=pr_numbers,
         todo_file_path=todo_file,
     )
@@ -305,6 +324,7 @@ def _setup_pr_worktrees(
     pr_urls: dict[int, str],
     design_doc: Path,
     design_content: str,
+    original_todo_content: str | None,
     todo_file: Path,
     todo_content: str,
     num_comments: int,
@@ -321,6 +341,7 @@ def _setup_pr_worktrees(
         pr_urls: Mapping of PR numbers to GitHub URLs.
         design_doc: Path to the design document.
         design_content: Content of the design document.
+        original_todo_content: Content of the original implementation TODO (from implement phase).
         todo_file: Path to the TODO file for this iteration.
         todo_content: Content of the TODO file.
         num_comments: Number of unresolved comments found.
@@ -363,6 +384,7 @@ def _setup_pr_worktrees(
             worktree_path=worktree_path,
             design_doc_path=design_doc,
             design_content=design_content,
+            original_todo_content=original_todo_content,
             todo_file_path=todo_file,
             todo_content=todo_content,
         )
@@ -618,6 +640,7 @@ def _cleanup_pr_files(
 
 def _run_fix_iteration(
     design_doc: Path,
+    original_todo: Path | None,
     todo_file: Path,
     pr_numbers: list[int],
     pr_branches: dict[int, str],
@@ -632,6 +655,7 @@ def _run_fix_iteration(
 
     Args:
         design_doc: Path to the design document.
+        original_todo: Path to the original implementation TODO file (from implement phase).
         todo_file: Path to the TODO file for this iteration.
         pr_numbers: List of PR numbers to fix.
         pr_branches: Mapping of PR numbers to branch names.
@@ -647,11 +671,13 @@ def _run_fix_iteration(
     """
     logger.info(f"Running fix iteration: pr_numbers={pr_numbers}, todo_file={todo_file}")
     design_content = design_doc.read_text()
+    original_todo_content = original_todo.read_text() if original_todo else None
 
     # Phase 1: Run planning to create fix TODO
     success, todo_content, num_comments, num_ci_failures = _run_fix_planning(
         design_doc=design_doc,
         design_content=design_content,
+        original_todo_content=original_todo_content,
         pr_numbers=pr_numbers,
         todo_file=todo_file,
         claude_service=claude_service,
@@ -668,6 +694,7 @@ def _run_fix_iteration(
         pr_urls=pr_urls,
         design_doc=design_doc,
         design_content=design_content,
+        original_todo_content=original_todo_content,
         todo_file=todo_file,
         todo_content=todo_content,
         num_comments=num_comments,

@@ -449,6 +449,7 @@ def implement(
         fix_command(
             design_doc=design_doc,
             pr_identifiers=[str(pr) for pr in collected_prs],
+            original_todo=todo_file_path,
             model=model,
             dry_run=dry_run,
             verbose=verbose,

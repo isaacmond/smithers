@@ -146,6 +146,7 @@ class TestFixPrompts:
         prompt = render_fix_planning_prompt(
             design_doc_path=Path("/path/to/design.md"),
             design_content="# Design",
+            original_todo_content=None,
             pr_numbers=[123, 456],
             todo_file_path=Path("/path/to/todo.md"),
         )
@@ -155,6 +156,20 @@ class TestFixPrompts:
         assert "CI/CD" in prompt
         assert "review comments" in prompt.lower()
 
+    def test_render_fix_planning_prompt_with_original_todo(self) -> None:
+        """Test rendering the fix planning prompt with original TODO."""
+        prompt = render_fix_planning_prompt(
+            design_doc_path=Path("/path/to/design.md"),
+            design_content="# Design",
+            original_todo_content="# Original TODO\n- [ ] Step 1\n- [ ] Step 2",
+            pr_numbers=[123],
+            todo_file_path=Path("/path/to/todo.md"),
+        )
+
+        assert "Original Implementation TODO" in prompt
+        assert "Step 1" in prompt
+        assert "Step 2" in prompt
+
     def test_render_fix_prompt(self) -> None:
         """Test rendering the fix prompt for a specific PR."""
         prompt = render_fix_prompt(
@@ -163,6 +178,7 @@ class TestFixPrompts:
             worktree_path=Path("/worktrees/feature-test"),
             design_doc_path=Path("/path/to/design.md"),
             design_content="# Design",
+            original_todo_content=None,
             todo_file_path=Path("/path/to/todo.md"),
             todo_content="# TODO",
         )
@@ -176,6 +192,22 @@ class TestFixPrompts:
         assert "de-slopify skill" in prompt
         assert "code-review subagent" in prompt
 
+    def test_render_fix_prompt_with_original_todo(self) -> None:
+        """Test rendering the fix prompt with original TODO."""
+        prompt = render_fix_prompt(
+            pr_number=123,
+            branch="feature/test",
+            worktree_path=Path("/worktrees/feature-test"),
+            design_doc_path=Path("/path/to/design.md"),
+            design_content="# Design",
+            original_todo_content="# Original TODO\n- [ ] Implement feature X",
+            todo_file_path=Path("/path/to/todo.md"),
+            todo_content="# TODO",
+        )
+
+        assert "Original Implementation TODO" in prompt
+        assert "Implement feature X" in prompt
+
     def test_fix_prompt_contains_claude_prefix_instruction(self) -> None:
         """Test that fix prompt instructs to prefix replies with [CLAUDE]."""
         prompt = render_fix_prompt(
@@ -184,6 +216,7 @@ class TestFixPrompts:
             worktree_path=Path("/test"),
             design_doc_path=Path("design.md"),
             design_content="",
+            original_todo_content=None,
             todo_file_path=Path("todo.md"),
             todo_content="",
         )
