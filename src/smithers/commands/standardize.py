@@ -184,13 +184,11 @@ def standardize(
     # Stage 1: Run analysis prompt
     print_header("Stage 1: Analyzing PR Series")
     print_info("Running Claude to analyze all PRs and determine standardized structure...")
-    print_info("(Using auto-compact for large diffs)")
 
     analysis_prompt = render_standardize_analysis_prompt(pr_diffs)
     logger.debug(f"Analysis prompt length: {len(analysis_prompt)} chars")
 
-    # Run with auto_compact enabled to handle large diffs
-    analysis_result = claude_service.run_prompt(analysis_prompt, auto_compact=True)
+    analysis_result = claude_service.run_prompt(analysis_prompt)
 
     if verbose:
         print_header("Analysis Output")
@@ -243,7 +241,7 @@ def standardize(
     )
     logger.debug(f"Update prompt length: {len(update_prompt)} chars")
 
-    update_result = claude_service.run_prompt(update_prompt, auto_compact=True)
+    update_result = claude_service.run_prompt(update_prompt)
 
     if verbose:
         print_header("Update Output")

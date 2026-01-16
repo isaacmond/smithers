@@ -115,7 +115,6 @@ class ClaudeService:
 
     model: str = "claude-opus-4-5-20251101"
     dangerously_skip_permissions: bool = True
-    auto_compact: bool = False
 
     def check_dependencies(self) -> list[str]:
         """Check for required dependencies and return list of missing ones."""
@@ -146,14 +145,12 @@ class ClaudeService:
         self,
         prompt: str,
         workdir: Path | None = None,
-        auto_compact: bool | None = None,
     ) -> ClaudeResult:
         """Run a prompt through Claude CLI.
 
         Args:
             prompt: The prompt to send to Claude
             workdir: Optional working directory
-            auto_compact: Override instance auto_compact setting if provided
 
         Returns:
             ClaudeResult with output and status
@@ -166,15 +163,7 @@ class ClaudeService:
         if self.dangerously_skip_permissions:
             cmd.append("--dangerously-skip-permissions")
 
-        # Use parameter override if provided, otherwise use instance setting
-        use_auto_compact = auto_compact if auto_compact is not None else self.auto_compact
-        if use_auto_compact:
-            cmd.append("--auto-compact")
-
-        logger.info(
-            f"Running Claude prompt: model={self.model}, workdir={workdir}, "
-            f"auto_compact={use_auto_compact}"
-        )
+        logger.info(f"Running Claude prompt: model={self.model}, workdir={workdir}")
         logger.debug(f"Claude command: {' '.join(cmd)}")
         logger.debug(f"Prompt (first 500 chars): {prompt[:500]}...")
         logger.debug(f"Prompt length: {len(prompt)} chars")
