@@ -61,15 +61,25 @@ IMPORTANT: For the "Depends on" field, use the actual branch name (e.g., "{branc
 
 ### Guidelines
 
-**PR Size and Scope (CRITICAL - READ THIS CAREFULLY):**
-- **MINIMIZE THE NUMBER OF PRs** — This is the single most important guideline
-- Target **2-3 stages maximum** for most implementations. Only use 4-5 for genuinely large features
-- Each stage should be a **substantial PR of 300-800+ lines** of meaningful code
-- If your plan has more than 3 stages, you MUST consolidate. Ask yourself: "Can these be combined?"
-- **NEVER** create stages under 200 lines — always combine them with adjacent work
-- Think of each PR as having significant review overhead — fewer PRs is ALWAYS better
-- Common mistake to avoid: Creating too many small, granular PRs. Don't do this.
-- When in doubt, COMBINE stages. Err heavily on the side of fewer, larger PRs
+**PR Scope and Separation (CRITICAL - READ THIS CAREFULLY):**
+- **ONE PR PER LOGICAL FEATURE** — This is the single most important guideline
+- Each PR should implement ONE cohesive piece of functionality that can be understood and reviewed independently
+- **NEVER combine unrelated or tangential features into a single PR** — if two features could be shipped independently, they should be separate PRs
+- Ask yourself for each stage: "Does this PR do ONE thing well, or am I bundling unrelated changes?"
+- The number of PRs should match the number of distinct features/concerns in the design doc
+- A design doc with 5 distinct features should result in ~5 PRs, not 2 large combined PRs
+
+**What belongs together vs. separate:**
+- TOGETHER: A feature + its tests + its migrations + its API endpoint (all serving the same feature)
+- SEPARATE: User authentication vs. email notifications vs. admin dashboard (distinct features)
+- SEPARATE: Different API endpoints that serve different purposes, even if they touch similar files
+- TOGETHER: Refactoring that's required for a feature should be in the same PR as the feature
+
+**PR Size Guidelines:**
+- Ideal PR size is 200-600 lines of meaningful code — large enough to be substantial, small enough to review
+- PRs over 800 lines are usually a sign that multiple features are being combined — split them
+- PRs under 100 lines are fine if they represent a complete, logical unit of work
+- Line count is secondary to logical cohesion — a focused 150-line PR is better than a sprawling 500-line PR
 
 **Stage Structure:**
 - Break the work into logical stages that are executed SEQUENTIALLY (one at a time)
@@ -181,15 +191,22 @@ Revise the plan based on the user's feedback. Update the TODO file at {todo_file
 
 ### Guidelines (IMPORTANT - Same as before)
 
-**PR Size and Scope (CRITICAL - READ THIS CAREFULLY):**
-- **MINIMIZE THE NUMBER OF PRs** — This is the single most important guideline
-- Target **2-3 stages maximum** for most implementations. Only use 4-5 for genuinely large features
-- Each stage should be a **substantial PR of 300-800+ lines** of meaningful code
-- If your plan has more than 3 stages, you MUST consolidate. Ask yourself: "Can these be combined?"
-- **NEVER** create stages under 200 lines — always combine them with adjacent work
-- Think of each PR as having significant review overhead — fewer PRs is ALWAYS better
-- Common mistake to avoid: Creating too many small, granular PRs. Don't do this.
-- When in doubt, COMBINE stages. Err heavily on the side of fewer, larger PRs
+**PR Scope and Separation (CRITICAL - READ THIS CAREFULLY):**
+- **ONE PR PER LOGICAL FEATURE** — This is the single most important guideline
+- Each PR should implement ONE cohesive piece of functionality that can be understood and reviewed independently
+- **NEVER combine unrelated or tangential features into a single PR** — if two features could be shipped independently, they should be separate PRs
+- Ask yourself for each stage: "Does this PR do ONE thing well, or am I bundling unrelated changes?"
+- The number of PRs should match the number of distinct features/concerns in the design doc
+
+**What belongs together vs. separate:**
+- TOGETHER: A feature + its tests + its migrations + its API endpoint (all serving the same feature)
+- SEPARATE: User authentication vs. email notifications vs. admin dashboard (distinct features)
+- SEPARATE: Different API endpoints that serve different purposes, even if they touch similar files
+
+**PR Size Guidelines:**
+- Ideal PR size is 200-600 lines — large enough to be substantial, small enough to review
+- PRs over 800 lines are usually a sign that multiple features are being combined — split them
+- Line count is secondary to logical cohesion
 
 **Testing (CRITICAL):**
 - Tests MUST be included in the same stage as the code they test — NEVER create separate testing stages/PRs
