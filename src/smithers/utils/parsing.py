@@ -33,6 +33,13 @@ def parse_pr_identifier(identifier: str) -> int:
             except ValueError:
                 pass
 
+    # Check if it looks like a file path and provide a helpful hint
+    if identifier.endswith(".md"):
+        raise ValueError(
+            f"Invalid PR identifier: {identifier}. "
+            "This looks like a markdown file. Did you mean to use --design-doc/-d?"
+        )
+
     raise ValueError(
         f"Invalid PR identifier: {identifier}. "
         "Expected a PR number (e.g., 123) or GitHub URL (e.g., https://github.com/owner/repo/pull/123)"
