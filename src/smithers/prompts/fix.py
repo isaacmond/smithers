@@ -23,9 +23,13 @@ FIX_PLANNING_PROMPT_TEMPLATE = """You are creating a fix plan to address incompl
    - Identify any features, functionality, or requirements that are missing or incomplete
    - Note which PR should contain each missing item
 
-2. Fetch the unresolved review comments from each PR using the GitHub CLI:
+2. Fetch ALL comments from each PR using the GitHub CLI:
    - gh pr view <pr_number> --json reviewThreads,comments
    - Use GraphQL to get detailed thread info including resolution status
+   - **IMPORTANT**: PRs have TWO types of comments that MUST both be addressed:
+     a) **Review thread comments** (line-level): Found in `reviewThreads`, tied to specific file/line, have `isResolved` status
+     b) **General PR comments** (PR-level): Found in `comments`, NOT tied to specific lines, do NOT have `isResolved` status
+   - Both types MUST be fetched and included in the TODO if unresolved
 
 3. Check CI/CD status for each PR:
    - gh pr checks <pr_number>
@@ -72,14 +76,24 @@ Addressing incomplete implementation, review comments and CI/CD failures on PRs:
 - **Files affected**: [file paths if identifiable]
 - **Action required**: [What needs to be fixed]
 
-### Comment 1: [Brief summary of the comment]
+### Review Comment 1: [Brief summary of the comment]
 - **Status**: pending
+- **Type**: review_thread (line-level)
 - **Author**: [reviewer name]
-- **File**: [file path and line number if applicable]
+- **File**: [file path and line number]
 - **Comment**: [The actual review comment text]
 - **Action required**: [What needs to be done to address this]
 
-[... more comments as needed ...]
+[... more review thread comments as needed ...]
+
+### General Comment 1: [Brief summary of the comment]
+- **Status**: pending
+- **Type**: general (PR-level)
+- **Author**: [commenter name]
+- **Comment**: [The actual comment text]
+- **Action required**: [What needs to be done to address this]
+
+[... more general PR comments as needed ...]
 
 ## PR #[next number]: [PR title]
 [... CI failures and comments for this PR ...]
@@ -92,9 +106,12 @@ Addressing incomplete implementation, review comments and CI/CD failures on PRs:
 - Check implementation completeness FIRST - missing functionality is highest priority
 - Then check CI/CD status - failing tests/lint/type-checks are next priority
 - Include specific error messages and stack traces from CI logs
-- Only include UNRESOLVED review comments (skip resolved threads)
-- Skip comments that contain [RESOLVED] or start with [CLAUDE]
+- **Include BOTH types of unresolved comments:**
+  - **Review thread comments** (line-level): Skip only if `isResolved == true`
+  - **General PR comments** (PR-level): Include ALL unless they contain [RESOLVED] or start with [CLAUDE]
+- Skip any comment that contains [RESOLVED] or starts with [CLAUDE]
 - Group by PR, with incomplete items and CI failures listed before review comments
+- List review thread comments first, then general PR comments
 - Be specific about what action is needed for each item
 
 ### Output (CRITICAL - Valid JSON Required)
@@ -180,18 +197,27 @@ If CI is failing, you MUST fix it:
 - Commit and push the fixes
 - Verify CI passes before moving to review comments
 
-### 4. Fetch PR Details and Comments
-- Use gh CLI to get PR info, review threads (with resolution status), and general comments
+### 4. Fetch PR Details and ALL Comments
+- Use gh CLI to get PR info: `gh pr view {pr_number} --json reviewThreads,comments`
 - Use GraphQL API to check which review threads are resolved vs unresolved
+- **IMPORTANT**: PRs have TWO types of comments that MUST both be addressed:
+  a) **Review thread comments** (line-level): Found in `reviewThreads`, tied to specific file/line, have `isResolved` status
+  b) **General PR comments** (PR-level): Found in `comments`, NOT tied to specific lines, do NOT have `isResolved` status
 
-### 5. Identify Unresolved Comments
-Skip comments that:
-- Are in a resolved thread (isResolved == true)
-- Contain [RESOLVED] in the body
-- Start with [CLAUDE] (already handled by you)
+### 5. Identify Unresolved Comments (BOTH TYPES)
+**For review thread comments (line-level):**
+- Skip if `isResolved == true`
+- Skip if comment body contains [RESOLVED]
+- Skip if comment body starts with [CLAUDE]
 
-### 6. Address EVERY Unresolved Comment (if any exist)
+**For general PR comments (PR-level):**
+- These do NOT have `isResolved` status - address ALL of them unless:
+- Skip if comment body contains [RESOLVED]
+- Skip if comment body starts with [CLAUDE]
+
+### 6. Address EVERY Unresolved Comment of BOTH Types (if any exist)
 You MUST reply to EVERY single unresolved comment. No exceptions.
+This includes BOTH review thread comments AND general PR comments.
 
 For each comment:
 - **Code change requests**: Make the fix, then reply confirming
@@ -201,11 +227,13 @@ For each comment:
 - **Cursor Bugbot comments**: Address the issue or explain why not applicable
 
 ### 7. How to Reply
-- Use gh CLI to reply to review comments and issue comments
+- For **review thread comments**: Use `gh api` to reply to the review thread
+- For **general PR comments**: Use `gh pr comment {pr_number} --body "[CLAUDE] ..."`
 - ALWAYS prefix replies with [CLAUDE] so reviewers know it's automated
 
 ### 8. Resolve Threads When Appropriate
-Use the GitHub GraphQL API to resolve review threads after addressing them.
+- For **review thread comments**: Use the GitHub GraphQL API to resolve the thread after addressing
+- For **general PR comments**: No resolution needed (just reply with [CLAUDE] prefix)
 
 {update_design_doc_section}
 ### 10. Run post-PR quality workflow (see Post-PR Code Quality Workflow section below)
@@ -231,8 +259,8 @@ If CI/CD is running or pending, treat it as passed and set `ci_status` to "passi
   "pr_number": {pr_number},
   "base_branch_merged": <true if origin/main was merged successfully, false otherwise>,
   "merge_conflicts": "<none|resolved|unresolved>",
-  "unresolved_before": <count of unresolved comments before processing>,
-  "addressed": <count of comments addressed>,
+  "unresolved_before": <count of ALL unresolved comments before processing (BOTH review thread AND general PR comments)>,
+  "addressed": <count of ALL comments addressed (BOTH types)>,
   "ci_status": "<passing|failing>",
   "done": <true ONLY if all conditions below are met>,
   "error": null
@@ -242,7 +270,7 @@ If CI/CD is running or pending, treat it as passed and set `ci_status` to "passi
 **IMPORTANT**: `done` can ONLY be true if ALL of the following are satisfied:
 - Base branch (origin/main) has been merged into this branch
 - There are NO unresolved merge conflicts
-- There are ZERO unresolved comments (`unresolved_before` after your processing should be 0)
+- There are ZERO unresolved comments of EITHER type (review thread comments AND general PR comments)
 - CI status is "passing"
 
 If you fail after 5 retry attempts, output:

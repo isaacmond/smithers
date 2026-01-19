@@ -599,7 +599,7 @@ wheels = [
 
 [[package]]
 name = "smithers"
-version = "1.23.9"
+version = "1.23.10"
 source = { editable = "." }
 dependencies = [
     { name = "mcp" },
