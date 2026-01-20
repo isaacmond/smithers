@@ -230,10 +230,12 @@ Checkpoints are saved to the TODO file. Use `--resume` to skip completed stages.
 ### Fix Mode
 
 Loops until ALL conditions are met:
-- Base branch is merged into all PR branches
-- All merge conflicts resolved
+- All PR branches are rebased onto the base branch (keeps diffs clean for stacked PRs)
+- All rebase conflicts resolved
 - All review comments addressed (0 unresolved)
 - All CI/CD checks passing
+
+**Stacked PR Best Practices**: Smithers uses rebase (not merge) when updating branches. This keeps PR diffs clean by showing only the changes from each branch, not accumulated changes from merged branches. After rebasing, branches are force-pushed with `--force-with-lease`.
 
 Includes robust error handling that logs exceptions during parallel session execution, making it easier to diagnose issues when sessions fail unexpectedly.
 

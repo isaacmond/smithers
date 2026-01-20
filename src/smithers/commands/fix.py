@@ -508,8 +508,8 @@ def _collect_fix_results(
     total_addressed = 0
     all_done = True
     all_ci_passing = True
-    all_base_merged = True
-    all_merge_conflicts_resolved = True
+    all_base_rebased = True
+    all_rebase_conflicts_resolved = True
 
     for data in group_data:
         pr_num = data["pr_number"]
@@ -530,10 +530,10 @@ def _collect_fix_results(
             all_done = False
         if result["ci_failing"]:
             all_ci_passing = False
-        if not result["base_merged"]:
-            all_base_merged = False
-        if not result["merge_conflicts_resolved"]:
-            all_merge_conflicts_resolved = False
+        if not result["base_rebased"]:
+            all_base_rebased = False
+        if not result["rebase_conflicts_resolved"]:
+            all_rebase_conflicts_resolved = False
         total_unresolved += result["unresolved"]
         total_addressed += result["addressed"]
 
@@ -546,21 +546,21 @@ def _collect_fix_results(
     # Print summary
     logger.info(
         f"Iteration summary: unresolved={total_unresolved}, addressed={total_addressed}, "
-        f"ci_passing={all_ci_passing}, base_merged={all_base_merged}, "
-        f"merge_conflicts_resolved={all_merge_conflicts_resolved}, all_done={all_done}"
+        f"ci_passing={all_ci_passing}, base_rebased={all_base_rebased}, "
+        f"rebase_conflicts_resolved={all_rebase_conflicts_resolved}, all_done={all_done}"
     )
     console.print(f"\nTotal unresolved before: {total_unresolved}")
     console.print(f"Total addressed: {total_addressed}")
     console.print(f"All CI passing: {all_ci_passing}")
-    console.print(f"All base branches merged: {all_base_merged}")
-    console.print(f"All merge conflicts resolved: {all_merge_conflicts_resolved}")
+    console.print(f"All base branches rebased: {all_base_rebased}")
+    console.print(f"All rebase conflicts resolved: {all_rebase_conflicts_resolved}")
     console.print(f"All done: {all_done}")
 
     return {
         "all_done": all_done,
         "all_ci_passing": all_ci_passing,
-        "all_base_merged": all_base_merged,
-        "all_merge_conflicts_resolved": all_merge_conflicts_resolved,
+        "all_base_rebased": all_base_rebased,
+        "all_rebase_conflicts_resolved": all_rebase_conflicts_resolved,
         "total_unresolved": total_unresolved,
         "total_addressed": total_addressed,
     }
@@ -586,8 +586,8 @@ def _process_pr_result(
     result: dict[str, bool | int] = {
         "done": False,
         "ci_failing": False,
-        "base_merged": True,
-        "merge_conflicts_resolved": True,
+        "base_rebased": True,
+        "rebase_conflicts_resolved": True,
         "unresolved": 0,
         "addressed": 0,
     }
@@ -620,8 +620,8 @@ def _process_pr_result(
         logger.debug(f"PR #{pr_num} JSON output: {json_output}")
         result["done"] = json_output.get("done", False)
         result["ci_failing"] = json_output.get("ci_status") == "failing"
-        result["base_merged"] = json_output.get("base_branch_merged", False)
-        result["merge_conflicts_resolved"] = json_output.get("merge_conflicts") != "unresolved"
+        result["base_rebased"] = json_output.get("base_branch_rebased", False)
+        result["rebase_conflicts_resolved"] = json_output.get("rebase_conflicts") != "unresolved"
         result["unresolved"] = json_output.get("unresolved_before", 0)
         result["addressed"] = json_output.get("addressed", 0)
     else:
@@ -795,8 +795,8 @@ def _run_fix_iteration(
     truly_all_done = (
         results["all_done"]
         and results["all_ci_passing"]
-        and results["all_base_merged"]
-        and results["all_merge_conflicts_resolved"]
+        and results["all_base_rebased"]
+        and results["all_rebase_conflicts_resolved"]
         and results["total_unresolved"] == 0
     )
 
@@ -805,6 +805,6 @@ def _run_fix_iteration(
         "comments_done_ci_failing": results["all_done"] and not results["all_ci_passing"],
         "total_unresolved": results["total_unresolved"],
         "total_addressed": results["total_addressed"],
-        "all_base_merged": results["all_base_merged"],
-        "all_merge_conflicts_resolved": results["all_merge_conflicts_resolved"],
+        "all_base_rebased": results["all_base_rebased"],
+        "all_rebase_conflicts_resolved": results["all_rebase_conflicts_resolved"],
     }

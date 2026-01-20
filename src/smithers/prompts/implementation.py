@@ -7,6 +7,7 @@ from smithers.prompts.templates import (
     POST_PR_WORKFLOW_SECTION,
     QUALITY_CHECKS_SECTION,
     SELF_HEALING_SECTION,
+    STACKED_PR_BRANCH_SECTION,
     STRICT_JSON_SECTION,
     TODO_STATE_SECTION,
     render_template,
@@ -40,10 +41,11 @@ Implement **Stage {stage_number}** as specified in the TODO file above.
 1. **Update TODO status to in_progress** (see TODO State Management above)
 2. **Read the TODO file** to understand what Stage {stage_number} requires
 3. **You are already on branch '{branch}'** in a worktree - no need to checkout
-4. **Merge base to stay up to date**:
+4. **Rebase onto base to stay up to date** (see Stacked PR Branch Management below):
    - git fetch origin
-   - git merge origin/{worktree_base}
-   - **RESOLVE ALL MERGE CONFLICTS** (see Merge Conflict Resolution section below)
+   - git rebase origin/{worktree_base}
+   - **RESOLVE ALL REBASE CONFLICTS** if any occur
+   - After rebasing, push with: git push --force-with-lease
 5. **Implement the changes** as specified in the TODO
 6. **Run quality checks** (MUST ALL PASS) (e.g. lint, type check, test)
 7. **Commit and push** with clear messages
@@ -62,6 +64,7 @@ Implement **Stage {stage_number}** as specified in the TODO file above.
 10. **Run post-PR quality workflow** (see Post-PR Code Quality Workflow section below)
 11. **Update TODO status to completed** (see TODO State Management above)
 {post_pr_workflow_section}
+{stacked_pr_branch_section}
 {merge_conflict_section}
 ### If You Discover Issues
 If the plan needs adjustment:
@@ -139,6 +142,7 @@ def render_implementation_prompt(
         post_pr_workflow_section=POST_PR_WORKFLOW_SECTION,
         quality_checks_section=QUALITY_CHECKS_SECTION,
         self_healing_section=SELF_HEALING_SECTION,
+        stacked_pr_branch_section=STACKED_PR_BRANCH_SECTION.format(base_branch=worktree_base),
         strict_json_section=STRICT_JSON_SECTION,
         todo_state_section=TODO_STATE_SECTION,
     )

@@ -7,6 +7,7 @@ from smithers.prompts.templates import (
     POST_PR_WORKFLOW_SECTION,
     QUALITY_CHECKS_SECTION,
     SELF_HEALING_SECTION,
+    STACKED_PR_BRANCH_SECTION,
     STRICT_JSON_SECTION,
     render_template,
 )
@@ -171,11 +172,11 @@ The fix process is not complete until:
 ### 1. Update Branch FIRST (ALWAYS REQUIRED - EVEN WITH 0 COMMENTS)
 - You are already on branch '{branch}' in a worktree
 - Fetch latest: git fetch origin
-- Pull latest changes: git pull origin {branch}
-- **ALWAYS merge origin/main**: git merge origin/main
-- **IMMEDIATELY RESOLVE ALL MERGE CONFLICTS** if any occur
+- Pull latest changes: git pull --rebase origin {branch}
+- **ALWAYS rebase onto origin/main**: git rebase origin/main
+- **IMMEDIATELY RESOLVE ALL REBASE CONFLICTS** if any occur (see Stacked PR Branch Management below)
 - After resolving, run bin/run_lint.sh and bin/run_type_check.sh to verify
-- Commit and push merge resolution if needed
+- Push with: git push --force-with-lease
 - **This step is MANDATORY even if there are no review comments**
 
 ### 2. Check CI/CD Status (HIGHEST PRIORITY)
@@ -248,6 +249,7 @@ After pushing, verify CI/CD status:
 - Use: gh pr checks {pr_number}
 - NEVER wait for CI/CD. If checks are running or pending, assume they PASSED.
 - If any checks are FAILING, fix them
+{stacked_pr_branch_section}
 {merge_conflict_section}
 {strict_json_section}
 ## Output Format
@@ -257,8 +259,8 @@ If CI/CD is running or pending, treat it as passed and set `ci_status` to "passi
 ---JSON_OUTPUT---
 {{
   "pr_number": {pr_number},
-  "base_branch_merged": <true if origin/main was merged successfully, false otherwise>,
-  "merge_conflicts": "<none|resolved|unresolved>",
+  "base_branch_rebased": <true if successfully rebased onto origin/main, false otherwise>,
+  "rebase_conflicts": "<none|resolved|unresolved>",
   "unresolved_before": <count of ALL unresolved comments before processing (BOTH review thread AND general PR comments)>,
   "addressed": <count of ALL comments addressed (BOTH types)>,
   "ci_status": "<passing|failing>",
@@ -268,8 +270,8 @@ If CI/CD is running or pending, treat it as passed and set `ci_status` to "passi
 ---END_JSON---
 
 **IMPORTANT**: `done` can ONLY be true if ALL of the following are satisfied:
-- Base branch (origin/main) has been merged into this branch
-- There are NO unresolved merge conflicts
+- Branch has been rebased onto origin/main
+- There are NO unresolved rebase conflicts
 - There are ZERO unresolved comments of EITHER type (review thread comments AND general PR comments)
 - CI status is "passing"
 
@@ -278,8 +280,8 @@ If you fail after 5 retry attempts, output:
 ---JSON_OUTPUT---
 {{
   "pr_number": {pr_number},
-  "base_branch_merged": false,
-  "merge_conflicts": "unresolved",
+  "base_branch_rebased": false,
+  "rebase_conflicts": "unresolved",
   "unresolved_before": <count>,
   "addressed": 0,
   "ci_status": "failing",
@@ -427,5 +429,6 @@ def render_fix_prompt(
         post_pr_workflow_section=POST_PR_WORKFLOW_SECTION,
         quality_checks_section=QUALITY_CHECKS_SECTION,
         self_healing_section=SELF_HEALING_SECTION,
+        stacked_pr_branch_section=STACKED_PR_BRANCH_SECTION.format(base_branch="main"),
         strict_json_section=STRICT_JSON_SECTION,
     )

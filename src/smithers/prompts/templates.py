@@ -110,3 +110,38 @@ Commit any improvements from each step as separate commits before proceeding to 
 
 Do not consider the PR ready for review until all three steps are complete.
 """
+
+STACKED_PR_BRANCH_SECTION = """
+### Stacked PR Branch Management (CRITICAL)
+When working with stacked PRs, you MUST use rebase instead of merge to keep diffs clean.
+
+**Why rebase, not merge:**
+- Merging base branches into feature branches pollutes PR diffs with unrelated changes
+- This makes PRs unreadable and hard to review
+- Rebasing keeps the PR diff showing ONLY the changes from this branch
+
+**How to update your branch:**
+```bash
+git fetch origin
+git rebase origin/{base_branch}
+```
+
+**After rebasing, you MUST force-push:**
+```bash
+git push --force-with-lease
+```
+
+**NEVER use these (they pollute diffs):**
+- `git merge origin/main`
+- `git merge origin/{base_branch}`
+- `git pull` (without --rebase)
+
+**If rebase has conflicts:**
+1. Resolve conflicts in each file
+2. `git add <resolved_files>`
+3. `git rebase --continue`
+4. Repeat until rebase completes
+5. `git push --force-with-lease`
+
+**IMPORTANT**: Always use `--force-with-lease` (not `--force`) for safety.
+"""
