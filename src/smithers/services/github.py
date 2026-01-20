@@ -50,6 +50,59 @@ class GitHubService:
         if missing:
             raise DependencyMissingError(missing)
 
+    def get_pr_by_branch(self, branch: str) -> PRInfo | None:
+        """Find a pull request by its head branch name.
+
+        Args:
+            branch: The head branch name to search for
+
+        Returns:
+            PRInfo if a PR exists for the branch, None otherwise
+        """
+        logger.info(f"Looking up PR for branch: {branch}")
+        cmd = [
+            "gh",
+            "pr",
+            "list",
+            "--head",
+            branch,
+            "--state",
+            "all",
+            "--json",
+            "number,title,headRefName,state,url",
+            "--limit",
+            "1",
+        ]
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                check=True,
+                text=True,
+            )
+            log_subprocess_result(logger, cmd, result.returncode, result.stdout, result.stderr)
+            data = json.loads(result.stdout)
+            if not data:
+                logger.info(f"No PR found for branch: {branch}")
+                return None
+            pr_data = data[0]
+            pr_info = PRInfo(
+                number=pr_data["number"],
+                title=pr_data["title"],
+                branch=pr_data["headRefName"],
+                state=pr_data["state"],
+                url=pr_data["url"],
+            )
+            logger.info(f"Found PR #{pr_info.number} for branch {branch}")
+            return pr_info
+        except subprocess.CalledProcessError as e:
+            log_subprocess_result(logger, cmd, e.returncode, e.stdout, e.stderr, success=False)
+            logger.warning(f"Failed to look up PR for branch {branch}: {e.stderr}")
+            return None
+        except (json.JSONDecodeError, KeyError, IndexError) as e:
+            logger.warning(f"Failed to parse PR lookup response for branch {branch}: {e}")
+            return None
+
     def get_pr_info(self, pr_number: int) -> PRInfo:
         """Get information about a pull request.
 

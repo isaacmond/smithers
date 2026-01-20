@@ -32,6 +32,7 @@ from smithers.prompts.planning import (
 )
 from smithers.services.claude import ClaudeResult, ClaudeService
 from smithers.services.git import GitService
+from smithers.services.github import GitHubService
 from smithers.services.tmux import TmuxService
 from smithers.services.vibekanban import (
     VibekanbanService,
@@ -271,6 +272,7 @@ def implement(
     tmux_service = TmuxService()
     claude_service = ClaudeService(model=model)
     vibekanban_service = create_vibekanban_service()
+    github_service = GitHubService()
 
     # Check dependencies
     logger.info("Checking dependencies")
@@ -343,6 +345,7 @@ def implement(
                 tmux_service=tmux_service,
                 claude_service=claude_service,
                 vibekanban_service=vibekanban_service,
+                github_service=github_service,
                 config=config,
                 resume=resume,
                 session_name=session_name,
@@ -416,6 +419,7 @@ def implement(
                 tmux_service=tmux_service,
                 claude_service=claude_service,
                 vibekanban_service=vibekanban_service,
+                github_service=github_service,
                 config=config,
                 resume=resume,
                 session_name=session_name,
@@ -499,18 +503,22 @@ def _handle_resume_mode(todo: TodoFile, resume: bool) -> list[int]:
 
 def _process_stage_result(
     stage_number: int,
+    branch: str,
     output_file: Path,
     stage_vk_task_id: str | None,
     vibekanban_service: VibekanbanService,
+    github_service: GitHubService,
     config: Config,
 ) -> int | None:
     """Process the result from a completed stage session.
 
     Args:
         stage_number: The stage number.
+        branch: The expected branch name for this stage.
         output_file: Path to the output file.
         stage_vk_task_id: Vibekanban task ID if tracking.
         vibekanban_service: Vibekanban service instance.
+        github_service: GitHub service for PR lookup.
         config: Configuration instance.
 
     Returns:
@@ -519,6 +527,16 @@ def _process_stage_result(
     logger.info(f"Collecting result from Stage {stage_number}")
     console.print("\nCollecting result...")
 
+    # Primary method: Look up PR by branch name (most reliable)
+    pr_info = github_service.get_pr_by_branch(branch)
+    if pr_info:
+        logger.info(f"Stage {stage_number} complete: PR #{pr_info.number} (found by branch lookup)")
+        print_success(f"Stage {stage_number} complete. PR #{pr_info.number}")
+        if stage_vk_task_id:
+            vibekanban_service.update_task_status(stage_vk_task_id, "completed")
+        return pr_info.number
+
+    # Fallback: Try to extract from output (for cases where PR just created)
     if not output_file.exists():
         logger.warning(f"No output file found for Stage {stage_number}: {output_file}")
         console.print(f"[yellow]Warning: No output file found for Stage {stage_number}[/yellow]")
@@ -538,26 +556,36 @@ def _process_stage_result(
         console.print(output)
 
     stage_result = ClaudeResult(output=output, exit_code=0, success=True)
-    pr_num = stage_result.extract_pr_number()
-    logger.debug(f"Stage {stage_number} extracted PR number: {pr_num}")
+    extracted_pr_num = stage_result.extract_pr_number()
+    logger.debug(f"Stage {stage_number} extracted PR number from output: {extracted_pr_num}")
 
-    if pr_num:
-        logger.info(f"Stage {stage_number} complete: PR #{pr_num}")
-        print_success(f"Stage {stage_number} complete. PR #{pr_num}")
-        if stage_vk_task_id:
-            vibekanban_service.update_task_status(stage_vk_task_id, "completed")
-    else:
-        msg = f"Could not extract PR number for Stage {stage_number}"
-        logger.warning(msg)
-        console.print(f"[yellow]Warning: {msg}[/yellow]")
-        console.print(
-            f"[yellow]Stage {stage_number} kept as in_progress - "
-            f"verify completion manually[/yellow]"
-        )
-        if stage_vk_task_id:
-            vibekanban_service.update_task_status(stage_vk_task_id, "failed")
+    # Validate extracted PR belongs to correct branch
+    if extracted_pr_num:
+        try:
+            extracted_pr_info = github_service.get_pr_info(extracted_pr_num)
+            if extracted_pr_info.branch == branch:
+                logger.info(f"Stage {stage_number} complete: PR #{extracted_pr_num} (validated)")
+                print_success(f"Stage {stage_number} complete. PR #{extracted_pr_num}")
+                if stage_vk_task_id:
+                    vibekanban_service.update_task_status(stage_vk_task_id, "completed")
+                return extracted_pr_num
+            logger.warning(
+                f"Stage {stage_number}: Extracted PR #{extracted_pr_num} has branch "
+                f"'{extracted_pr_info.branch}', expected '{branch}' - ignoring"
+            )
+        except Exception as e:
+            logger.warning(f"Stage {stage_number}: Failed to validate PR #{extracted_pr_num}: {e}")
 
-    return pr_num
+    msg = f"Could not find PR for Stage {stage_number} (branch: {branch})"
+    logger.warning(msg)
+    console.print(f"[yellow]Warning: {msg}[/yellow]")
+    console.print(
+        f"[yellow]Stage {stage_number} kept as in_progress - verify completion manually[/yellow]"
+    )
+    if stage_vk_task_id:
+        vibekanban_service.update_task_status(stage_vk_task_id, "failed")
+
+    return None
 
 
 def _cleanup_stage_files(
@@ -586,6 +614,7 @@ def _run_implementation_phase(
     tmux_service: TmuxService,
     claude_service: ClaudeService,
     vibekanban_service: VibekanbanService,
+    github_service: GitHubService,
     config: Config,
     resume: bool = False,
     session_name: str = "",
@@ -601,6 +630,7 @@ def _run_implementation_phase(
         tmux_service: Tmux service instance.
         claude_service: Claude service instance.
         vibekanban_service: Vibekanban service for task tracking.
+        github_service: GitHub service for PR lookup.
         config: Configuration instance.
         resume: If True, skip stages that are already completed.
         session_name: The smithers session name for PR tracking.
@@ -696,9 +726,11 @@ def _run_implementation_phase(
         # Process result
         pr_num = _process_stage_result(
             stage_number=stage.number,
+            branch=stage.branch,
             output_file=output_file,
             stage_vk_task_id=stage_vk_task_id,
             vibekanban_service=vibekanban_service,
+            github_service=github_service,
             config=config,
         )
         if pr_num:
