@@ -22,9 +22,9 @@ def cleanup(
         bool,
         typer.Option("--force", "-f", help="Skip confirmation prompt"),
     ] = False,
-    worktrees: Annotated[
+    no_worktrees: Annotated[
         bool,
-        typer.Option("--worktrees", "-w", help="Also clean up git worktrees"),
+        typer.Option("--no-worktrees", help="Skip git worktree cleanup"),
     ] = False,
     worktrees_only: Annotated[
         bool,
@@ -35,18 +35,17 @@ def cleanup(
         typer.Option("--delete-branches", help="Also delete branches when removing worktrees"),
     ] = False,
 ) -> None:
-    """Delete all smithers-created vibekanban tasks and optionally git worktrees.
+    """Delete all smithers-created vibekanban tasks and git worktrees.
 
     Finds and deletes all tasks with [impl], [fix], [plan], or [standardize]
     prefixes across all statuses (todo, in_progress, completed, failed).
 
-    With --worktrees or --worktrees-only, also cleans up git worktrees
-    (excluding the main repository).
+    Also cleans up git worktrees by default (excluding the main repository).
 
     Examples:
-        smithers cleanup                  # Clean up vibekanban tasks
+        smithers cleanup                  # Clean up tasks AND worktrees
         smithers cleanup megarepo         # Clean up the megarepo project
-        smithers cleanup --worktrees      # Clean up tasks AND worktrees
+        smithers cleanup --no-worktrees   # Only clean up vibekanban tasks
         smithers cleanup --worktrees-only # Only clean up worktrees
     """
     # Handle worktrees cleanup
@@ -136,8 +135,8 @@ def cleanup(
     if failed > 0:
         print_error(f"Failed to delete {failed} task(s).")
 
-    # Also clean up worktrees if requested
-    if worktrees:
+    # Also clean up worktrees (default behavior, skip with --no-worktrees)
+    if not no_worktrees:
         console.print()
         _cleanup_worktrees(force=force, delete_branches=delete_branches)
 
