@@ -139,7 +139,7 @@ def standardize(
         pr_list = ", ".join(f"#{pr}" for pr in pr_numbers)
         # Create vibekanban task (created as in_progress by default)
         vk_task_id = vibekanban_service.create_task(
-            title=f"Standardize PRs: {pr_list}",
+            title=f"[standardize] PRs: {pr_list}",
             description=f"Standardizing titles and descriptions for: {pr_list}",
         )
         if vk_task_id:
