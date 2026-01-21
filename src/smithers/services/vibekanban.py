@@ -365,7 +365,10 @@ class VibekanbanService:
                 tasks = self.list_tasks(status=status)
                 for task in tasks:
                     title = task.get("title", "")
-                    if title.startswith(("[impl]", "[fix]", "[plan]", "[standardize]")):
+                    # Match both new format ([standardize]) and legacy format (Standardize PRs:)
+                    if title.startswith(
+                        ("[impl]", "[fix]", "[plan]", "[standardize]", "Standardize PRs:")
+                    ):
                         smithers_tasks.append(task)
             except Exception:
                 logger.warning(f"Failed to list tasks with status {status}", exc_info=True)
@@ -392,9 +395,12 @@ class VibekanbanService:
                 title = task.get("title", "")
                 task_id = task.get("id")
                 # Only clean up smithers-created tasks
+                # Match both new format ([standardize]) and legacy format (Standardize PRs:)
                 if (
                     task_id
-                    and title.startswith(("[impl]", "[fix]", "[plan]", "[standardize]"))
+                    and title.startswith(
+                        ("[impl]", "[fix]", "[plan]", "[standardize]", "Standardize PRs:")
+                    )
                     and self.update_task_status(task_id, "failed")
                 ):
                     logger.info(f"Cleaned up orphaned task: {task_id} ({title})")
