@@ -164,20 +164,35 @@ Address all issues for PR #{pr_number}.
 {self_healing_section}
 **CRITICAL**: You MUST complete ALL steps below, even if there are 0 comments to address.
 The fix process is not complete until:
-1. Base branch is merged in (origin/main)
-2. All merge conflicts are resolved
-3. All CI/CD checks pass
-4. All unresolved comments are addressed (if any)
+1. PR is mergeable (no merge conflicts) - only rebase if GitHub says `mergeable: CONFLICTING`
+2. All CI/CD checks pass
+3. All unresolved comments are addressed (if any)
 
-### 1. Update Branch FIRST (ALWAYS REQUIRED - EVEN WITH 0 COMMENTS)
+### 1. Update Branch (ONLY if Merge Conflicts Exist)
 - You are already on branch '{branch}' in a worktree
 - Fetch latest: git fetch origin
-- Pull latest changes: git pull --rebase origin {branch}
-- **ALWAYS rebase onto origin/main**: git rebase origin/main
-- **IMMEDIATELY RESOLVE ALL REBASE CONFLICTS** if any occur (see Stacked PR Branch Management below)
+- Pull latest changes from your branch: git pull --rebase origin {branch}
+
+**CHECK if PR has merge conflicts using GitHub API:**
+```bash
+gh pr view {pr_number} --json mergeable --jq '.mergeable'
+```
+
+**Interpret the result:**
+- `MERGEABLE` → **SKIP REBASE** - PR can merge cleanly, no action needed
+- `CONFLICTING` → **REBASE REQUIRED** - PR has merge conflicts that must be resolved
+- `UNKNOWN` → GitHub is still calculating, wait a few seconds and check again
+
+**ONLY rebase if mergeable == "CONFLICTING":**
+- Run: `git rebase origin/main`
+- **IMMEDIATELY RESOLVE ALL REBASE CONFLICTS** (see Stacked PR Branch Management below)
 - After resolving, run bin/run_lint.sh and bin/run_type_check.sh to verify
-- Push with: git push --force-with-lease
-- **This step is MANDATORY even if there are no review comments**
+- Push with: `git push --force-with-lease`
+
+**If mergeable == "MERGEABLE":**
+- Skip the rebase entirely - there are no merge conflicts
+- Still push if you pulled new changes from your own branch: `git push`
+- Being "behind main" is NOT a reason to rebase - only conflicts matter
 
 ### 2. Check CI/CD Status (HIGHEST PRIORITY)
 - Use: gh pr checks {pr_number}
@@ -259,7 +274,7 @@ If CI/CD is running or pending, treat it as passed and set `ci_status` to "passi
 ---JSON_OUTPUT---
 {{
   "pr_number": {pr_number},
-  "base_branch_rebased": <true if successfully rebased onto origin/main, false otherwise>,
+  "mergeable": <true if PR is mergeable (no conflicts), false if conflicts exist and couldn't be resolved>,
   "rebase_conflicts": "<none|resolved|unresolved>",
   "unresolved_before": <count of ALL unresolved comments before processing (BOTH review thread AND general PR comments)>,
   "addressed": <count of ALL comments addressed (BOTH types)>,
@@ -270,8 +285,7 @@ If CI/CD is running or pending, treat it as passed and set `ci_status` to "passi
 ---END_JSON---
 
 **IMPORTANT**: `done` can ONLY be true if ALL of the following are satisfied:
-- Branch has been rebased onto origin/main
-- There are NO unresolved rebase conflicts
+- PR is mergeable (GitHub says `mergeable: MERGEABLE` - either had no conflicts, or conflicts were resolved)
 - There are ZERO unresolved comments of EITHER type (review thread comments AND general PR comments)
 - CI status is "passing"
 
@@ -280,7 +294,7 @@ If you fail after 5 retry attempts, output:
 ---JSON_OUTPUT---
 {{
   "pr_number": {pr_number},
-  "base_branch_rebased": false,
+  "mergeable": false,
   "rebase_conflicts": "unresolved",
   "unresolved_before": <count>,
   "addressed": 0,
