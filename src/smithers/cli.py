@@ -15,6 +15,7 @@ from smithers.commands.rejoin import rejoin
 from smithers.commands.sessions import sessions
 from smithers.commands.standardize import standardize
 from smithers.commands.update import update
+from smithers.commands.vibekanban import kanban, kanban_kill, kanban_update
 from smithers.logging_config import (
     cleanup_old_logs,
     cleanup_old_sessions,
@@ -43,6 +44,9 @@ app.command(name="update")(update)
 app.command(name="projects")(projects)
 app.command(name="cleanup")(cleanup)
 app.command(name="quote", hidden=True)(quote)
+app.command(name="kanban")(kanban)
+app.command(name="kanban-kill")(kanban_kill)
+app.command(name="kanban-update")(kanban_update)
 
 
 @app.callback(invoke_without_command=True)
