@@ -6,6 +6,8 @@ from shutil import which
 
 import typer
 
+from smithers.commands.cleanup import cleanup
+from smithers.commands.projects import projects
 from smithers.console import console, print_error, print_info, print_success, print_warning
 from smithers.services.config_loader import load_vibekanban_config
 from smithers.services.tmux import TmuxService
@@ -16,10 +18,14 @@ VIBEKANBAN_SESSION_NAME = "smithers-vibekanban"
 # Create the kanban subcommand group
 kanban_app = typer.Typer(
     name="kanban",
-    help="Manage vibe-kanban background service.",
+    help="Manage vibe-kanban service and tasks.",
     add_completion=False,
     invoke_without_command=True,
 )
+
+# Register projects and cleanup as subcommands
+kanban_app.command(name="projects")(projects)
+kanban_app.command(name="cleanup")(cleanup)
 
 
 @kanban_app.callback(invoke_without_command=True)

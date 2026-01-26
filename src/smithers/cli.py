@@ -4,12 +4,10 @@ import typer
 from rich.console import Console
 
 from smithers import __version__
-from smithers.commands.cleanup import cleanup
 from smithers.commands.fix import fix
 from smithers.commands.implement import implement
 from smithers.commands.kill import kill
 from smithers.commands.plan import plan
-from smithers.commands.projects import projects
 from smithers.commands.quote import quote
 from smithers.commands.rejoin import rejoin
 from smithers.commands.sessions import sessions
@@ -41,8 +39,6 @@ app.command(name="rejoin")(rejoin)
 app.command(name="sessions")(sessions)
 app.command(name="kill")(kill)
 app.command(name="update")(update)
-app.command(name="projects")(projects)
-app.command(name="cleanup")(cleanup)
 app.command(name="quote", hidden=True)(quote)
 app.add_typer(kanban_app, name="kanban")
 

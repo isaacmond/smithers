@@ -127,21 +127,6 @@ Analyzes all PR diffs and updates each PR with:
 - Overview and summary of changes
 - Table of all PRs in the series
 
-### cleanup
-
-Delete all smithers-created vibekanban tasks and optionally git worktrees.
-
-```bash
-smithers cleanup                    # Delete all [impl] and [fix] tasks
-smithers cleanup megarepo           # Clean up the megarepo project
-smithers cleanup --force            # Skip confirmation prompt
-smithers cleanup --worktrees        # Also clean up git worktrees
-smithers cleanup --worktrees-only   # Only clean up worktrees (skip vibekanban)
-smithers cleanup -w --delete-branches  # Remove worktrees and their branches
-```
-
-Finds and removes all tasks with `[impl]` or `[fix]` prefixes across all statuses (todo, in_progress, completed, failed). With `--worktrees`, also removes all git worktrees created by smithers (or any other worktrees).
-
 ### Session Management
 
 Smithers runs long operations in background tmux sessions while streaming output to your terminal.
@@ -245,14 +230,17 @@ Includes robust error handling that logs exceptions during parallel session exec
 Smithers integrates with [Vibekanban](https://vibekanban.com/) to track Claude sessions as kanban tasks. Enabled by default with zero configuration.
 
 ```bash
-smithers projects           # List available projects (shows active)
-smithers projects megarepo  # Set megarepo as active project
-
 # Run vibe-kanban as a persistent background service
 smithers kanban             # Start vibe-kanban in background tmux session
 smithers kanban start       # Same as above (explicit)
 smithers kanban kill        # Stop the background vibe-kanban
 smithers kanban update      # Update vibe-kanban to latest version
+
+# Manage vibekanban projects and tasks
+smithers kanban projects           # List available projects (shows active)
+smithers kanban projects megarepo  # Set megarepo as active project
+smithers kanban cleanup            # Delete all smithers tasks and worktrees
+smithers kanban cleanup --force    # Skip confirmation prompt
 ```
 
 See [docs/vibekanban.md](docs/vibekanban.md) for configuration options.

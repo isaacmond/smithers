@@ -22,8 +22,8 @@ def projects(
     With a project name, sets that project as active.
 
     Examples:
-        smithers projects           # List all projects
-        smithers projects megarepo  # Set megarepo as active project
+        smithers kanban projects           # List all projects
+        smithers kanban projects megarepo  # Set megarepo as active project
     """
     print_header("Vibekanban Projects")
 
@@ -101,4 +101,4 @@ def _list_projects(project_list: list[dict[str, str]]) -> None:
             console.print(f"  • [cyan]{project_name}[/cyan]")
 
     console.print("\n[dim]Set a project with:[/dim]")
-    console.print("  [cyan]smithers projects <name>[/cyan]")
+    console.print("  [cyan]smithers kanban projects <name>[/cyan]")

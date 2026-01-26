@@ -43,10 +43,10 @@ def cleanup(
     Also cleans up git worktrees by default (excluding the main repository).
 
     Examples:
-        smithers cleanup                  # Clean up tasks AND worktrees
-        smithers cleanup megarepo         # Clean up the megarepo project
-        smithers cleanup --no-worktrees   # Only clean up vibekanban tasks
-        smithers cleanup --worktrees-only # Only clean up worktrees
+        smithers kanban cleanup                  # Clean up tasks AND worktrees
+        smithers kanban cleanup megarepo         # Clean up the megarepo project
+        smithers kanban cleanup --no-worktrees   # Only clean up vibekanban tasks
+        smithers kanban cleanup --worktrees-only # Only clean up worktrees
     """
     # Handle worktrees cleanup
     if worktrees_only:
@@ -73,7 +73,7 @@ def cleanup(
 
     if not service.is_configured():
         print_error("No vibekanban project configured.")
-        console.print("\nRun [cyan]smithers projects[/cyan] to see available projects.")
+        console.print("\nRun [cyan]smithers kanban projects[/cyan] to see available projects.")
         raise typer.Exit(1)
 
     # Find all smithers-created tasks
