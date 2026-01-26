@@ -1,11 +1,13 @@
 """Vibekanban management commands."""
 
+import os
 import subprocess
 from shutil import which
 
 import typer
 
 from smithers.console import console, print_error, print_info, print_success, print_warning
+from smithers.services.config_loader import load_vibekanban_config
 from smithers.services.tmux import TmuxService
 
 # Session name for the vibe-kanban background process
@@ -39,10 +41,17 @@ def kanban() -> None:
         print_error(f"tmux dependency check failed: {e}")
         raise typer.Exit(1) from e
 
-    print_info("Starting vibe-kanban in background tmux session...")
+    # Load config to get the port
+    config = load_vibekanban_config()
+    port = config.port
 
-    # Create detached tmux session running vibe-kanban
+    print_info(f"Starting vibe-kanban on port {port} in background tmux session...")
+
+    # Create detached tmux session running vibe-kanban with fixed port
+    # We use env to set PORT before running npx
     try:
+        env = os.environ.copy()
+        env["PORT"] = str(port)
         result = subprocess.run(
             [
                 "tmux",
@@ -50,6 +59,8 @@ def kanban() -> None:
                 "-d",  # Detached
                 "-s",
                 VIBEKANBAN_SESSION_NAME,
+                "env",
+                f"PORT={port}",
                 "npx",
                 "--quiet",
                 "vibe-kanban@latest",
@@ -57,6 +68,7 @@ def kanban() -> None:
             capture_output=True,
             check=True,
             text=True,
+            env=env,
         )
         if result.returncode != 0:
             print_error(f"Failed to start tmux session: {result.stderr}")
@@ -65,7 +77,7 @@ def kanban() -> None:
         print_error(f"Failed to create tmux session: {e.stderr}")
         raise typer.Exit(1) from e
 
-    print_success("vibe-kanban is now running in the background!")
+    print_success(f"vibe-kanban is now running on port {port} in the background!")
     console.print(f"  Session: [cyan]{VIBEKANBAN_SESSION_NAME}[/cyan]")
     console.print("  View it: [cyan]tmux attach -t smithers-vibekanban[/cyan]")
     console.print("  Stop it: [cyan]smithers kanban-kill[/cyan]")

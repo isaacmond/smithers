@@ -12,12 +12,17 @@ logger = get_logger("smithers.services.config_loader")
 CONFIG_FILE = Path.home() / ".smithers" / "config.json"
 
 
+# Default port for vibe-kanban web UI
+DEFAULT_VIBEKANBAN_PORT = 8080
+
+
 @dataclass
 class VibekanbanConfig:
     """Vibekanban-specific configuration."""
 
     enabled: bool = True
     project_id: str | None = None
+    port: int = DEFAULT_VIBEKANBAN_PORT
 
 
 def load_vibekanban_config() -> VibekanbanConfig:
@@ -26,6 +31,7 @@ def load_vibekanban_config() -> VibekanbanConfig:
     Environment variables override file config:
     - SMITHERS_VIBEKANBAN_ENABLED: "1" or "true" to enable
     - SMITHERS_VIBEKANBAN_PROJECT_ID: Project ID to use
+    - SMITHERS_VIBEKANBAN_PORT: Port for web UI (default: 8080)
 
     Returns:
         VibekanbanConfig with values from file or defaults.
@@ -35,6 +41,7 @@ def load_vibekanban_config() -> VibekanbanConfig:
     # Environment variables override file config
     env_enabled = os.environ.get("SMITHERS_VIBEKANBAN_ENABLED")
     env_project_id = os.environ.get("SMITHERS_VIBEKANBAN_PROJECT_ID")
+    env_port = os.environ.get("SMITHERS_VIBEKANBAN_PORT")
 
     enabled = file_config.enabled
     if env_enabled is not None:
@@ -42,9 +49,17 @@ def load_vibekanban_config() -> VibekanbanConfig:
 
     project_id = env_project_id or file_config.project_id
 
+    port = file_config.port
+    if env_port is not None:
+        try:
+            port = int(env_port)
+        except ValueError:
+            logger.warning(f"Invalid SMITHERS_VIBEKANBAN_PORT value: {env_port}, using default")
+
     return VibekanbanConfig(
         enabled=enabled,
         project_id=project_id,
+        port=port,
     )
 
 
@@ -66,6 +81,7 @@ def _load_from_file() -> VibekanbanConfig:
         return VibekanbanConfig(
             enabled=vk_config.get("enabled", True),
             project_id=vk_config.get("project_id"),
+            port=vk_config.get("port", DEFAULT_VIBEKANBAN_PORT),
         )
     except (json.JSONDecodeError, OSError) as e:
         logger.warning(f"Failed to load config file: {e}")

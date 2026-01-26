@@ -39,6 +39,26 @@ To disable vibekanban integration:
 export SMITHERS_VIBEKANBAN_ENABLED=false
 ```
 
+### Fixed Port Configuration
+
+By default, smithers runs vibe-kanban on port 8080. To use a different fixed port:
+
+```json
+{
+  "vibekanban": {
+    "port": 9000
+  }
+}
+```
+
+Or use an environment variable:
+
+```bash
+export SMITHERS_VIBEKANBAN_PORT=9000
+```
+
+The backend API runs on `port + 1` (e.g., port 9001 if the UI is on 9000).
+
 ## How It Works
 
 Smithers creates a **separate vibekanban task for each Claude Code session**:
