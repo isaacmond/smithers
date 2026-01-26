@@ -250,8 +250,9 @@ smithers projects megarepo  # Set megarepo as active project
 
 # Run vibe-kanban as a persistent background service
 smithers kanban             # Start vibe-kanban in background tmux session
-smithers kanban-kill        # Stop the background vibe-kanban
-smithers kanban-update      # Update vibe-kanban to latest version
+smithers kanban start       # Same as above (explicit)
+smithers kanban kill        # Stop the background vibe-kanban
+smithers kanban update      # Update vibe-kanban to latest version
 ```
 
 See [docs/vibekanban.md](docs/vibekanban.md) for configuration options.

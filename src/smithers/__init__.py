@@ -1,3 +1,3 @@
 """Smithers - Your loyal PR automation assistant, powered by Claude AI."""
 
-__version__ = "1.28.0"
+__version__ = "1.29.0"

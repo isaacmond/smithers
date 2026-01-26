@@ -13,8 +13,29 @@ from smithers.services.tmux import TmuxService
 # Session name for the vibe-kanban background process
 VIBEKANBAN_SESSION_NAME = "smithers-vibekanban"
 
+# Create the kanban subcommand group
+kanban_app = typer.Typer(
+    name="kanban",
+    help="Manage vibe-kanban background service.",
+    add_completion=False,
+    invoke_without_command=True,
+)
 
-def kanban() -> None:
+
+@kanban_app.callback(invoke_without_command=True)
+def kanban_callback(ctx: typer.Context) -> None:
+    """Manage vibe-kanban background service.
+
+    Run without a subcommand to start vibe-kanban, or use subcommands
+    like 'kill' and 'update' for other operations.
+    """
+    # If no subcommand provided, run start
+    if ctx.invoked_subcommand is None:
+        start()
+
+
+@kanban_app.command(name="start")
+def start() -> None:
     """Start vibe-kanban in a background tmux session.
 
     Launches vibe-kanban in a detached tmux session so it runs forever
@@ -30,7 +51,7 @@ def kanban() -> None:
     if tmux_service.session_exists(VIBEKANBAN_SESSION_NAME):
         print_warning("vibe-kanban is already running in a tmux session.")
         console.print(f"  Session: [cyan]{VIBEKANBAN_SESSION_NAME}[/cyan]")
-        console.print("  Use [cyan]smithers kanban-kill[/cyan] to stop it")
+        console.print("  Use [cyan]smithers kanban kill[/cyan] to stop it")
         console.print("  Use [cyan]tmux attach -t smithers-vibekanban[/cyan] to view it")
         return
 
@@ -80,14 +101,12 @@ def kanban() -> None:
     print_success(f"vibe-kanban is now running on port {port} in the background!")
     console.print(f"  Session: [cyan]{VIBEKANBAN_SESSION_NAME}[/cyan]")
     console.print("  View it: [cyan]tmux attach -t smithers-vibekanban[/cyan]")
-    console.print("  Stop it: [cyan]smithers kanban-kill[/cyan]")
+    console.print("  Stop it: [cyan]smithers kanban kill[/cyan]")
 
 
-def kanban_kill() -> None:
-    """Stop the vibe-kanban background tmux session.
-
-    Kills the tmux session that was started by `smithers kanban`.
-    """
+@kanban_app.command(name="kill")
+def kill() -> None:
+    """Stop the vibe-kanban background tmux session."""
     tmux_service = TmuxService()
 
     if not tmux_service.session_exists(VIBEKANBAN_SESSION_NAME):
@@ -99,7 +118,8 @@ def kanban_kill() -> None:
     print_success("vibe-kanban stopped.")
 
 
-def kanban_update() -> None:
+@kanban_app.command(name="update")
+def update() -> None:
     """Update vibe-kanban to the latest version.
 
     Stops the running vibe-kanban, updates via npm, and restarts it.
@@ -141,4 +161,4 @@ def kanban_update() -> None:
     # Restart if it was running
     if was_running:
         print_info("Restarting vibe-kanban...")
-        kanban()
+        start()
